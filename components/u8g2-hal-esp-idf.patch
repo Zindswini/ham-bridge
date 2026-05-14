@@ -1,0 +1,12 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index cfba22b..36275a3 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,4 +1,4 @@
+ file(GLOB_RECURSE SOURCES src/*.c)
+ idf_component_register(SRCS ${SOURCES}
+                        INCLUDE_DIRS "include"
+-                       REQUIRES driver freertos u8g2)
+\ No newline at end of file
++                       REQUIRES driver esp_driver_spi esp_driver_gpio freertos u8g2)
+\ No newline at end of file
