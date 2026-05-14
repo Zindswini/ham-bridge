@@ -12,12 +12,21 @@
 #include "esp_chip_info.h"
 #include "esp_flash.h"
 #include "esp_system.h"
+#include "esp_log.h"
 
 #include "u8g2.h"
 #include "u8g2_esp32_hal.h"
 
-#define PIN_SDA 2
-#define PIN_SCL 3
+// OLED Display and ES8388 Control
+#define PIN_SDA 0
+#define PIN_SCL 1
+
+// ES8388 I2S Pins
+#define PIN_DOUT  19
+#define PIN_LRCLK 18
+#define PIN_DIN   21
+#define PIN_SCLK  5
+#define PIN_MCLK  3
 
 void app_main(void)
 {
@@ -64,11 +73,16 @@ void app_main(void)
     printf("Initialized display\n");
     
     u8g2_SetPowerSave(&u8g2, 0);
-    u8g2_ClearBuffer(&u8g2);
+    
+    while(true)
+    {
+        printf("Alive!\n");
+        u8g2_ClearBuffer(&u8g2);
 
-    u8g2_SetFont(&u8g2, u8g2_font_helvB08_tr);
-    u8g2_DrawButtonUTF8(&u8g2, 64, 50, U8G2_BTN_SHADOW1|U8G2_BTN_HCENTER|U8G2_BTN_BW2, 56, 2, 2, "Testing 12 :3");
+        u8g2_SetFont(&u8g2, u8g2_font_helvB08_tr);
+        u8g2_DrawButtonUTF8(&u8g2, 64, 50, U8G2_BTN_SHADOW1|U8G2_BTN_HCENTER|U8G2_BTN_BW2, 56, 2, 2, "Testing 12 :3");
 
-    u8g2_SendBuffer(&u8g2);   
-    vTaskDelete(NULL);
+        u8g2_SendBuffer(&u8g2);   
+        vTaskDelay(10);
+    }
 }
