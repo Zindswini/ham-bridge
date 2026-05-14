@@ -40,6 +40,7 @@ build/
 sdkconfig
 sdkconfig.old
 .vscode/
+managed_components/
 
 # ---> KiCad
 # For PCBs designed using KiCad: https://www.kicad.org/
