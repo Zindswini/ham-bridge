@@ -10,6 +10,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_chip_info.h"
+#include "driver/i2c_master.h"
 #include "esp_flash.h"
 #include "esp_system.h"
 #include "esp_log.h"
@@ -63,7 +64,7 @@ void app_main(void)
 
     ESP_LOGI(TAG, "Minimum free heap size: %" PRIu32 " bytes", esp_get_minimum_free_heap_size());
 
-    ESP_LOGI(TAG, "Creating LCD HAL");
+    ESP_LOGI(TAG, "Configuring U8G2 HAL Object");
     u8g2_esp32_hal_t u8g2_esp32_hal = U8G2_ESP32_HAL_DEFAULT;
     u8g2_esp32_hal.bus.i2c.sda = PIN_SDA;
     u8g2_esp32_hal.bus.i2c.scl = PIN_SCL;
@@ -73,12 +74,26 @@ void app_main(void)
 
     u8g2_Setup_ssd1306_i2c_128x64_noname_f(&u8g2, U8G2_R0, u8g2_esp32_i2c_byte_cb, u8g2_esp32_gpio_and_delay_cb); // I2C Callback functions for mapping
     
-    ESP_LOGI(TAG, "Pre-Initialization");
+    ESP_LOGI(TAG, "Preparing to Initialize U8G2");
     u8x8_SetI2CAddress(&u8g2.u8x8, 0x78);
     u8g2_InitDisplay(&u8g2);
-    ESP_LOGI(TAG, "Initialized display");
-    
     u8g2_SetPowerSave(&u8g2, 0);
+    ESP_LOGI(TAG, "Initialized U8G2 and Display");
+
+    // Init codec i2s peripheral
+    i2c_master_bus_handle_t i2c_bus_handle = NULL;
+    i2c_master_bus_config_t i2c_mst_cfg = {
+        .i2c_port = I2C_NUM_0,
+        .sda_io_num = PIN_SDA,
+        .scl_io_num = PIN_SCL,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true
+    };
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_cfg, &i2c_bus_handle));
+
+    // Create I2S control interface with I2C bus handle
+
     
     while(true)
     {
@@ -86,9 +101,15 @@ void app_main(void)
         u8g2_ClearBuffer(&u8g2);
 
         u8g2_SetFont(&u8g2, u8g2_font_helvB08_tr);
-        u8g2_DrawButtonUTF8(&u8g2, 64, 50, U8G2_BTN_SHADOW1|U8G2_BTN_HCENTER|U8G2_BTN_BW2, 56, 2, 2, "Testing 12 :3");
+        u8g2_DrawButtonUTF8(&u8g2, 64, 24, U8G2_BTN_SHADOW1|U8G2_BTN_HCENTER|U8G2_BTN_BW2, 56, 2, 2, "Testing 12 :3");
+        
+        int current_timestamp = pdTICKS_TO_MS(xTaskGetTickCount());
+        char timestamp_string[10];
+        snprintf(timestamp_string, 9, "%d", current_timestamp);
 
-        u8g2_SendBuffer(&u8g2);   
+        u8g2_DrawButtonUTF8(&u8g2, 64, 50, U8G2_BTN_SHADOW1|U8G2_BTN_HCENTER|U8G2_BTN_BW2, 56, 2, 2, timestamp_string);
+
+        u8g2_SendBuffer(&u8g2);
         vTaskDelay(10);
     }
 }
