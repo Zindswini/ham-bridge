@@ -17,8 +17,8 @@
 #include "esp_codec_dev.h"
 
 // OLED Display and ES8388 Control
-#define PIN_SDA 0
-#define PIN_SCL 1
+#define PIN_SDA 1
+#define PIN_SCL 15
 
 // ES8388 I2S Pins
 #define PIN_DOUT  19
@@ -31,6 +31,7 @@ static const char* TAG = "MAIN";
 
 void app_main(void)
 {
+    vTaskDelay(pdMS_TO_TICKS(1500)); // Delay for monitoring reconnect
     ESP_LOGI(TAG, "Hello world!");
 
     /* Print chip information */
@@ -70,13 +71,12 @@ void app_main(void)
         .flags.enable_internal_pullup = true
     };
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_cfg, &i2c_bus_handle));
-    ESP_LOGI(TAG, "Initialized I2C Bus");
+    i2c_master_bus_reset(i2c_bus_handle);
+    ESP_LOGI(TAG, "Initialized I2C Bus at address %p", (void*)i2c_bus_handle);
 
     ESP_LOGI(TAG, "Configuring U8G2 HAL Object");
     u8g2_esp32_hal_t u8g2_esp32_hal = U8G2_ESP32_HAL_DEFAULT;
     u8g2_esp32_hal.bus.i2c.i2c_bus_handle = i2c_bus_handle;
-    u8g2_esp32_hal.bus.i2c.scl = PIN_SCL;
-    u8g2_esp32_hal.bus.i2c.sda = PIN_SDA;
     u8g2_esp32_hal_init(u8g2_esp32_hal);
 
     u8g2_t u8g2; // Structure for holding display state
@@ -84,15 +84,12 @@ void app_main(void)
     u8g2_Setup_ssd1306_i2c_128x64_noname_f(&u8g2, U8G2_R0, u8g2_esp32_i2c_byte_cb, u8g2_esp32_gpio_and_delay_cb); // I2C Callback functions for mapping
     
     ESP_LOGI(TAG, "Preparing to Initialize U8G2");
-    u8x8_SetI2CAddress(&u8g2.u8x8, (0x78<<1));
+    u8x8_SetI2CAddress(&u8g2.u8x8, 0x78);
     u8g2_InitDisplay(&u8g2);
     u8g2_SetPowerSave(&u8g2, 0);
     ESP_LOGI(TAG, "Initialized U8G2 and Display");
 
-    
-
     // Create I2S control interface with I2C bus handle
-
     
     while(true)
     {
