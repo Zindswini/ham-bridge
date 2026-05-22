@@ -112,6 +112,10 @@ void app_main(void)
     esp_log_level_set("*", ESP_LOG_INFO);
     drawScreen(&u8g2);
 
+    ESP_LOGE(TAG, "Starting music task");
+    xTaskCreate(i2s_music, "i2s_music", 4096, NULL, 5, NULL);
+    ESP_LOGE(TAG, "Created music task");
+
     vTaskDelay(pdMS_TO_TICKS(60000));
     
     while(true)

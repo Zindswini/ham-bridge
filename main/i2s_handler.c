@@ -1,10 +1,10 @@
 #include "i2s_handler.h"
 
 // ES8388 I2S Pins
-#define PIN_DOUT  21
-#define PIN_LRCLK 17
+#define PIN_DOUT  3
+#define PIN_LRCLK 21
 #define PIN_DIN   16
-#define PIN_SCLK  18
+#define PIN_SCLK  2
 #define PIN_MCLK  0
 
 #define I2S_SAMPLE_RATE   44100
@@ -24,11 +24,23 @@ esp_err_t i2s_driver_init(void) {
     
     i2s_std_config_t std_cfg = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(I2S_SAMPLE_RATE),
-        .slot_cfg = I2S_STD_PCM_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
+        // .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
+        .slot_cfg = {
+            .big_endian = false,
+            .bit_order_lsb = false,
+            .bit_shift = true,
+            .data_bit_width = 16,
+            .left_align = true,
+            .slot_bit_width = I2S_SLOT_BIT_WIDTH_16BIT,
+            .slot_mask = I2S_STD_SLOT_BOTH,
+            .slot_mode = I2S_SLOT_MODE_STEREO,
+            .ws_pol = false,
+            .ws_width = 16
+        },
         .gpio_cfg = {
             .mclk = PIN_MCLK,
-            .bclk = PIN_LRCLK,
-            .ws   = PIN_SCLK,
+            .bclk = PIN_SCLK,
+            .ws   = PIN_LRCLK,
             .din  = PIN_DIN,
             .dout = PIN_DOUT,
             .invert_flags = {
@@ -38,16 +50,16 @@ esp_err_t i2s_driver_init(void) {
             },
         },
     };
-    // std_cfg.clk_cfg.mclk_multiple = 256;
+    std_cfg.clk_cfg.mclk_multiple = 384;
 
     ESP_LOGD(TAG, "Initializing I2S Channels");
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_handle, &std_cfg));
-    ESP_ERROR_CHECK(i2s_channel_init_std_mode(rx_handle, &std_cfg));
+    // ESP_ERROR_CHECK(i2s_channel_init_std_mode(rx_handle, &std_cfg));
     ESP_LOGD(TAG, "Initialized I2S Channels");
 
     ESP_LOGD(TAG, "Enabling I2S Channels");
     ESP_ERROR_CHECK(i2s_channel_enable(tx_handle));
-    ESP_ERROR_CHECK(i2s_channel_enable(rx_handle));
+    // ESP_ERROR_CHECK(i2s_channel_enable(rx_handle));
     ESP_LOGD(TAG, "Enabled I2S Channels");
     return ESP_OK;
 }
@@ -80,7 +92,7 @@ esp_err_t es8388_codec_init(i2c_master_bus_handle_t i2c_bus_handle) {
     es8388_codec_cfg_t es8388_cfg = {
         .ctrl_if = ctrl_if,
         .gpio_if = gpio_if,
-        .codec_mode = ESP_CODEC_DEV_WORK_MODE_BOTH,
+        .codec_mode = ESP_CODEC_DEV_WORK_MODE_DAC,
         .master_mode = false,
         .pa_pin = 0, // ?
         .pa_reverted = false,
@@ -96,7 +108,7 @@ esp_err_t es8388_codec_init(i2c_master_bus_handle_t i2c_bus_handle) {
 
     ESP_LOGD(TAG, "Initializing I2S Device Config");
     esp_codec_dev_cfg_t dev_cfg = {
-        .dev_type = ESP_CODEC_DEV_TYPE_IN_OUT,
+        .dev_type = ESP_CODEC_DEV_TYPE_OUT,
         .codec_if = es8388_if,
         .data_if = data_if,
     };
@@ -109,17 +121,42 @@ esp_err_t es8388_codec_init(i2c_master_bus_handle_t i2c_bus_handle) {
         .bits_per_sample = I2S_DATA_BIT_WIDTH_16BIT,
         .channel = 2,
         .channel_mask = 0x03,
-        .sample_rate = 44100,
+        .sample_rate = I2S_SAMPLE_RATE,
+        .mclk_multiple = 256,
     };
     if (esp_codec_dev_open(codec_handle, &sample_cfg) != ESP_CODEC_DEV_OK) {
         ESP_LOGE(TAG, "Open codec device failed");
         return ESP_FAIL;
     }
 
-    if (esp_codec_dev_set_out_vol(codec_handle, 100) != ESP_CODEC_DEV_OK) {
+    if (esp_codec_dev_set_out_vol(codec_handle, 30) != ESP_CODEC_DEV_OK) {
         ESP_LOGE(TAG, "set output volume failed");
         return ESP_FAIL;
     }
     ESP_LOGD(TAG, "Initialized I2S Sample Config");
     return ESP_OK;
+}
+
+void i2s_music(void *args) {
+    esp_err_t status = ESP_OK;
+    size_t bytes_written = 0;
+    uint8_t *data_ptr = (uint8_t *)music_pcm_start;
+
+    // ESP_ERROR_CHECK(i2s_channel_enable(tx_handle));
+    while(1) {
+        status = i2s_channel_write(tx_handle, data_ptr, music_pcm_end - data_ptr, &bytes_written, portMAX_DELAY);
+        if (status != ESP_OK){
+            ESP_LOGE(TAG, "I2S write failed with reason: %s", esp_err_to_name(status));
+            abort();
+        }
+        if (bytes_written > 0) {
+            ESP_LOGI(TAG, "I2S write successful, %d bytes written", bytes_written);
+        }
+        else {
+            ESP_LOGE(TAG, "I2S write failed");
+            abort();
+        }
+        data_ptr = (uint8_t *)music_pcm_start;
+        // vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
