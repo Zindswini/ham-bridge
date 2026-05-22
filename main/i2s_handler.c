@@ -1,0 +1,125 @@
+#include "i2s_handler.h"
+
+// ES8388 I2S Pins
+#define PIN_DOUT  21
+#define PIN_LRCLK 17
+#define PIN_DIN   16
+#define PIN_SCLK  18
+#define PIN_MCLK  0
+
+#define I2S_SAMPLE_RATE   44100
+// #define I2S_MCLK_MULITPLE 256
+// #define I2S_MCLK_FREQ_HZ (I2S_SAMPLE_RATE * I2S_MCLK_MULITPLE)
+
+// I2S Handles
+static i2s_chan_handle_t tx_handle = NULL;
+static i2s_chan_handle_t rx_handle = NULL;
+
+static const char* TAG = "I2S_HANDLER";
+
+esp_err_t i2s_driver_init(void) {
+    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
+    chan_cfg.auto_clear = true;
+    ESP_ERROR_CHECK(i2s_new_channel(&chan_cfg, &tx_handle, &rx_handle));
+    
+    i2s_std_config_t std_cfg = {
+        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(I2S_SAMPLE_RATE),
+        .slot_cfg = I2S_STD_PCM_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
+        .gpio_cfg = {
+            .mclk = PIN_MCLK,
+            .bclk = PIN_LRCLK,
+            .ws   = PIN_SCLK,
+            .din  = PIN_DIN,
+            .dout = PIN_DOUT,
+            .invert_flags = {
+                .mclk_inv = false,
+                .bclk_inv = false,
+                .ws_inv = false,
+            },
+        },
+    };
+    // std_cfg.clk_cfg.mclk_multiple = 256;
+
+    ESP_LOGD(TAG, "Initializing I2S Channels");
+    ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_handle, &std_cfg));
+    ESP_ERROR_CHECK(i2s_channel_init_std_mode(rx_handle, &std_cfg));
+    ESP_LOGD(TAG, "Initialized I2S Channels");
+
+    ESP_LOGD(TAG, "Enabling I2S Channels");
+    ESP_ERROR_CHECK(i2s_channel_enable(tx_handle));
+    ESP_ERROR_CHECK(i2s_channel_enable(rx_handle));
+    ESP_LOGD(TAG, "Enabled I2S Channels");
+    return ESP_OK;
+}
+
+esp_err_t es8388_codec_init(i2c_master_bus_handle_t i2c_bus_handle) {
+    // Create I2S control interface with I2C bus handle
+    ESP_LOGD(TAG, "Initializing I2S I2C Config");
+    audio_codec_i2c_cfg_t i2s_i2c_cfg = {
+        .port = I2C_NUM_0,
+        .addr = ES8388_CODEC_DEFAULT_ADDR,
+        .bus_handle = i2c_bus_handle,
+    };
+    const audio_codec_ctrl_if_t *ctrl_if = audio_codec_new_i2c_ctrl(&i2s_i2c_cfg);
+    assert(ctrl_if);
+    ESP_LOGD(TAG, "Initialized I2S I2C Config");
+
+    ESP_LOGD(TAG, "Initializing I2S Config");
+    audio_codec_i2s_cfg_t i2s_cfg = {
+        .port = I2S_NUM_0,
+        .rx_handle = rx_handle,
+        .tx_handle = tx_handle,
+    };
+    const audio_codec_data_if_t *data_if = audio_codec_new_i2s_data(&i2s_cfg);
+    assert(data_if);
+    ESP_LOGD(TAG, "Initialized I2S Config");
+
+    ESP_LOGD(TAG, "Initializing I2S GPIO Config");
+    const audio_codec_gpio_if_t *gpio_if = audio_codec_new_gpio();
+    assert(gpio_if);
+    es8388_codec_cfg_t es8388_cfg = {
+        .ctrl_if = ctrl_if,
+        .gpio_if = gpio_if,
+        .codec_mode = ESP_CODEC_DEV_WORK_MODE_BOTH,
+        .master_mode = false,
+        .pa_pin = 0, // ?
+        .pa_reverted = false,
+        .hw_gain = {
+            .pa_voltage = 3.3,
+            .codec_dac_voltage = 3.3,
+            .pa_gain = 0,
+        },
+    };
+    const audio_codec_if_t *es8388_if = es8388_codec_new(&es8388_cfg);
+    assert(es8388_if);
+    ESP_LOGD(TAG, "Initialized I2S GPIO Config");
+
+    ESP_LOGD(TAG, "Initializing I2S Device Config");
+    esp_codec_dev_cfg_t dev_cfg = {
+        .dev_type = ESP_CODEC_DEV_TYPE_IN_OUT,
+        .codec_if = es8388_if,
+        .data_if = data_if,
+    };
+    esp_codec_dev_handle_t codec_handle = esp_codec_dev_new(&dev_cfg);
+    assert(codec_handle);
+    ESP_LOGD(TAG, "Initialized I2S Device Config");
+
+    ESP_LOGD(TAG, "Initializing I2S Sample Config");
+    esp_codec_dev_sample_info_t sample_cfg = {
+        .bits_per_sample = I2S_DATA_BIT_WIDTH_16BIT,
+        .channel = 2,
+        .channel_mask = 0x03,
+        .sample_rate = 44100,
+    };
+    if (esp_codec_dev_open(codec_handle, &sample_cfg) != ESP_CODEC_DEV_OK) {
+        ESP_LOGE(TAG, "Open codec device failed");
+        return ESP_FAIL;
+    }
+
+    if (esp_codec_dev_set_out_vol(codec_handle, 100) != ESP_CODEC_DEV_OK) {
+        ESP_LOGE(TAG, "set output volume failed");
+        return ESP_FAIL;
+    }
+    ESP_LOGD(TAG, "Initialized I2S Sample Config");
+    return ESP_OK;
+}

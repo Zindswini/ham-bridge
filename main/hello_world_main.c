@@ -13,21 +13,29 @@
 #include "u8g2.h"
 #include "u8g2_esp32_hal.h"
 
-// Espressif I2S Codec Library
-#include "esp_codec_dev.h"
+// Other ham_bridge components
+#include "i2s_handler.h"
 
 // OLED Display and ES8388 Control
 #define PIN_SDA 1
 #define PIN_SCL 15
 
-// ES8388 I2S Pins
-#define PIN_DOUT  19
-#define PIN_LRCLK 18
-#define PIN_DIN   21
-#define PIN_SCLK  2
-#define PIN_MCLK  3
-
 static const char* TAG = "MAIN";
+
+void drawScreen(u8g2_t *u8g2) {
+    u8g2_ClearBuffer(u8g2);
+
+    u8g2_SetFont(u8g2, u8g2_font_helvB08_tr);
+    u8g2_DrawButtonUTF8(u8g2, 64, 24, U8G2_BTN_SHADOW1|U8G2_BTN_HCENTER|U8G2_BTN_BW2, 56, 2, 2, "Testing 12 :3");
+    
+    int current_timestamp = pdTICKS_TO_MS(xTaskGetTickCount());
+    char timestamp_string[10];
+    snprintf(timestamp_string, 9, "%d", current_timestamp);
+
+    u8g2_DrawButtonUTF8(u8g2, 64, 50, U8G2_BTN_SHADOW1|U8G2_BTN_HCENTER|U8G2_BTN_BW2, 56, 2, 2, timestamp_string);
+
+    u8g2_SendBuffer(u8g2);
+}
 
 void app_main(void)
 {
@@ -89,23 +97,29 @@ void app_main(void)
     u8g2_SetPowerSave(&u8g2, 0);
     ESP_LOGI(TAG, "Initialized U8G2 and Display");
 
-    // Create I2S control interface with I2C bus handle
+    esp_log_level_set("*", ESP_LOG_INFO);
+    drawScreen(&u8g2);
+    esp_log_level_set("*", ESP_LOG_DEBUG);
+
+    ESP_LOGI(TAG, "Initializing I2S Driver");
+    i2s_driver_init();
+    ESP_LOGI(TAG, "Initialized I2S Driver");
+
+    ESP_LOGI(TAG, "Initializing I2S Codec");
+    es8388_codec_init(i2c_bus_handle);
+    ESP_LOGI(TAG, "Initialized I2S Codec");
+
+    esp_log_level_set("*", ESP_LOG_INFO);
+    drawScreen(&u8g2);
+
+    vTaskDelay(pdMS_TO_TICKS(60000));
     
     while(true)
     {
-        ESP_LOGI(TAG, "Alive!");
-        u8g2_ClearBuffer(&u8g2);
-
-        u8g2_SetFont(&u8g2, u8g2_font_helvB08_tr);
-        u8g2_DrawButtonUTF8(&u8g2, 64, 24, U8G2_BTN_SHADOW1|U8G2_BTN_HCENTER|U8G2_BTN_BW2, 56, 2, 2, "Testing 12 :3");
-        
-        int current_timestamp = pdTICKS_TO_MS(xTaskGetTickCount());
-        char timestamp_string[10];
-        snprintf(timestamp_string, 9, "%d", current_timestamp);
-
-        u8g2_DrawButtonUTF8(&u8g2, 64, 50, U8G2_BTN_SHADOW1|U8G2_BTN_HCENTER|U8G2_BTN_BW2, 56, 2, 2, timestamp_string);
-
-        u8g2_SendBuffer(&u8g2);
-        vTaskDelay(10);
+        esp_log_level_set("*", ESP_LOG_INFO);
+        drawScreen(&u8g2);
+        vTaskDelay(100);
     }
 }
+
+

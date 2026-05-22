@@ -69,7 +69,7 @@ index aa55996..d26f91f 100644
   * Construct a default HAL configuration with all fields undefined.
   */
 diff --git a/src/u8g2_esp32_hal.c b/src/u8g2_esp32_hal.c
-index c76314f..aa683f8 100644
+index c76314f..aa8a516 100644
 --- a/src/u8g2_esp32_hal.c
 +++ b/src/u8g2_esp32_hal.c
 @@ -10,11 +10,12 @@
@@ -182,3 +182,29 @@ index c76314f..aa683f8 100644
        break;
      }
    }
+@@ -239,17 +235,17 @@ uint8_t u8g2_esp32_gpio_and_delay_cb(u8x8_t* u8x8,
+       break;
+       // Set the Software I²C pin to the value passed in through arg_int.
+     case U8X8_MSG_GPIO_I2C_CLOCK:
+-      if (u8g2_esp32_hal.bus.i2c.scl != U8G2_ESP32_HAL_UNDEFINED) {
+-        gpio_set_level(u8g2_esp32_hal.bus.i2c.scl, arg_int);
+-        //				printf("%c",(arg_int==1?'C':'c'));
+-      }
++      // if (u8g2_esp32_hal.bus.i2c.scl != U8G2_ESP32_HAL_UNDEFINED) {
++      //   gpio_set_level(u8g2_esp32_hal.bus.i2c.scl, arg_int);
++      //   //				printf("%c",(arg_int==1?'C':'c'));
++      // }
+       break;
+       // Set the Software I²C pin to the value passed in through arg_int.
+     case U8X8_MSG_GPIO_I2C_DATA:
+-      if (u8g2_esp32_hal.bus.i2c.sda != U8G2_ESP32_HAL_UNDEFINED) {
+-        gpio_set_level(u8g2_esp32_hal.bus.i2c.sda, arg_int);
+-        //				printf("%c",(arg_int==1?'D':'d'));
+-      }
++      // if (u8g2_esp32_hal.bus.i2c.sda != U8G2_ESP32_HAL_UNDEFINED) {
++      //   gpio_set_level(u8g2_esp32_hal.bus.i2c.sda, arg_int);
++      //   //				printf("%c",(arg_int==1?'D':'d'));
++      // }
+       break;
+ 
+       // Delay for the number of milliseconds passed in through arg_int.
