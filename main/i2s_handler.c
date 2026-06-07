@@ -8,7 +8,7 @@
 #define PIN_MCLK  0
 
 #define I2S_SAMPLE_RATE   44100
-// #define I2S_MCLK_MULITPLE 256
+#define I2S_MCLK_MULITPLE 256
 // #define I2S_MCLK_FREQ_HZ (I2S_SAMPLE_RATE * I2S_MCLK_MULITPLE)
 
 // I2S Handles
@@ -24,19 +24,7 @@ esp_err_t i2s_driver_init(void) {
     
     i2s_std_config_t std_cfg = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(I2S_SAMPLE_RATE),
-        // .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
-        .slot_cfg = {
-            .big_endian = false,
-            .bit_order_lsb = false,
-            .bit_shift = true,
-            .data_bit_width = 16,
-            .left_align = true,
-            .slot_bit_width = I2S_SLOT_BIT_WIDTH_16BIT,
-            .slot_mask = I2S_STD_SLOT_BOTH,
-            .slot_mode = I2S_SLOT_MODE_STEREO,
-            .ws_pol = false,
-            .ws_width = 16
-        },
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = PIN_MCLK,
             .bclk = PIN_SCLK,
@@ -50,7 +38,7 @@ esp_err_t i2s_driver_init(void) {
             },
         },
     };
-    std_cfg.clk_cfg.mclk_multiple = 384;
+    std_cfg.clk_cfg.mclk_multiple = I2S_MCLK_MULITPLE;
 
     ESP_LOGD(TAG, "Initializing I2S Channels");
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_handle, &std_cfg));
@@ -92,9 +80,9 @@ esp_err_t es8388_codec_init(i2c_master_bus_handle_t i2c_bus_handle) {
     es8388_codec_cfg_t es8388_cfg = {
         .ctrl_if = ctrl_if,
         .gpio_if = gpio_if,
-        .codec_mode = ESP_CODEC_DEV_WORK_MODE_DAC,
+        .codec_mode = ESP_CODEC_DEV_WORK_MODE_BOTH,
         .master_mode = false,
-        .pa_pin = 0, // ?
+        .pa_pin = 6, // ?
         .pa_reverted = false,
         .hw_gain = {
             .pa_voltage = 3.3,
@@ -122,14 +110,14 @@ esp_err_t es8388_codec_init(i2c_master_bus_handle_t i2c_bus_handle) {
         .channel = 2,
         .channel_mask = 0x03,
         .sample_rate = I2S_SAMPLE_RATE,
-        .mclk_multiple = 256,
+        .mclk_multiple = I2S_MCLK_MULITPLE
     };
     if (esp_codec_dev_open(codec_handle, &sample_cfg) != ESP_CODEC_DEV_OK) {
         ESP_LOGE(TAG, "Open codec device failed");
         return ESP_FAIL;
     }
 
-    if (esp_codec_dev_set_out_vol(codec_handle, 30) != ESP_CODEC_DEV_OK) {
+    if (esp_codec_dev_set_out_vol(codec_handle, 100) != ESP_CODEC_DEV_OK) {
         ESP_LOGE(TAG, "set output volume failed");
         return ESP_FAIL;
     }

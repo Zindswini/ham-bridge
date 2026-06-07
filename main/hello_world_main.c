@@ -76,7 +76,7 @@ void app_main(void)
         .scl_io_num = PIN_SCL,
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = true
+        .flags.enable_internal_pullup = true,
     };
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_cfg, &i2c_bus_handle));
     i2c_master_bus_reset(i2c_bus_handle);
