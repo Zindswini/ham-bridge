@@ -2,17 +2,26 @@
 
 static const char* TAG = "INPUT_HANDLER";
 
+static volatile uint64_t last_press_time = 0;
 static QueueHandle_t input_queue;
 
-static void button_isr(void *args)
+static void IRAM_ATTR button_isr(void *args)
 {
-    // Get which button was pressed from the args
-    button_types button_type = (uint32_t)args;
-    BaseType_t hp_task_woken = pdFALSE;
-    xQueueSendToBackFromISR(input_queue, &button_type, &hp_task_woken);
-    if(hp_task_woken){
-        portYIELD_FROM_ISR();
+    // Debouncing
+    uint64_t now = esp_timer_get_time();
+    if((now - last_press_time) > (DEBOUNCE_DELAY_MS * 1000))
+    {
+        // Get which button was pressed from the args
+        button_types button_type = (uint32_t)args;
+        BaseType_t hp_task_woken = pdFALSE;
+
+        xQueueSendToBackFromISR(input_queue, &button_type, &hp_task_woken);
+        if(hp_task_woken){
+            portYIELD_FROM_ISR();
+        }
+        last_press_time = now;
     }
+
 }
 
 void setup_gpio(void)

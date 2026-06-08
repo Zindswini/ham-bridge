@@ -5,6 +5,7 @@
 #include "freertos/queue.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #define INCREMENT_BUTTON_PIN 40
 #define DECREMENT_BUTTON_PIN 39
