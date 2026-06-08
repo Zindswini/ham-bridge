@@ -15,12 +15,15 @@
 
 // Other ham_bridge components
 #include "i2s_handler.h"
+#include "input_handler.h"
 
 // OLED Display and ES8388 Control
 #define PIN_SDA 1
 #define PIN_SCL 15
 
 static const char* TAG = "MAIN";
+
+uint32_t last_draw_time;
 
 void drawScreen(u8g2_t *u8g2) {
     u8g2_ClearBuffer(u8g2);
@@ -67,6 +70,10 @@ void app_main(void)
 
     ESP_LOGI(TAG, "Minimum free heap size: %" PRIu32 " bytes", esp_get_minimum_free_heap_size());
 
+    ESP_LOGI(TAG, "Setting Up GPIO Callbacks");
+    setup_gpio();
+    ESP_LOGI(TAG, "Set Up GPIO Callbacks");
+
     // Init I2C Master Bus
     ESP_LOGI(TAG, "Initializing I2C Bus");
     i2c_master_bus_handle_t i2c_bus_handle = NULL;
@@ -97,9 +104,7 @@ void app_main(void)
     u8g2_SetPowerSave(&u8g2, 0);
     ESP_LOGI(TAG, "Initialized U8G2 and Display");
 
-    esp_log_level_set("*", ESP_LOG_INFO);
     drawScreen(&u8g2);
-    esp_log_level_set("*", ESP_LOG_DEBUG);
 
     ESP_LOGI(TAG, "Initializing I2S Driver");
     i2s_driver_init();
@@ -109,18 +114,16 @@ void app_main(void)
     es8388_codec_init(i2c_bus_handle);
     ESP_LOGI(TAG, "Initialized I2S Codec");
 
-    esp_log_level_set("*", ESP_LOG_INFO);
-    drawScreen(&u8g2);
-
-    ESP_LOGE(TAG, "Starting music task");
+    ESP_LOGI(TAG, "Starting music task");
     xTaskCreate(i2s_music, "i2s_music", 4096, NULL, 5, NULL);
-    ESP_LOGE(TAG, "Created music task");
+    ESP_LOGI(TAG, "Created music task");
 
-    vTaskDelay(pdMS_TO_TICKS(60000));
+    ESP_LOGI(TAG, "Starting Input Handler Task");
+    xTaskCreate(process_inputs, "process_inputs", 4096, NULL, 5, NULL);
+    ESP_LOGI(TAG, "Created Input Handler Task");
     
     while(true)
     {
-        esp_log_level_set("*", ESP_LOG_INFO);
         drawScreen(&u8g2);
         vTaskDelay(100);
     }

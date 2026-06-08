@@ -1,16 +1,5 @@
 #include "i2s_handler.h"
 
-// ES8388 I2S Pins
-#define PIN_DOUT  3
-#define PIN_LRCLK 21
-#define PIN_DIN   16
-#define PIN_SCLK  2
-#define PIN_MCLK  0
-
-#define I2S_SAMPLE_RATE   44100
-#define I2S_MCLK_MULITPLE 256
-// #define I2S_MCLK_FREQ_HZ (I2S_SAMPLE_RATE * I2S_MCLK_MULITPLE)
-
 // I2S Handles
 static i2s_chan_handle_t tx_handle = NULL;
 static i2s_chan_handle_t rx_handle = NULL;
@@ -130,7 +119,6 @@ void i2s_music(void *args) {
     size_t bytes_written = 0;
     uint8_t *data_ptr = (uint8_t *)music_pcm_start;
 
-    // ESP_ERROR_CHECK(i2s_channel_enable(tx_handle));
     while(1) {
         status = i2s_channel_write(tx_handle, data_ptr, music_pcm_end - data_ptr, &bytes_written, portMAX_DELAY);
         if (status != ESP_OK){
