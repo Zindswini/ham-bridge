@@ -2,30 +2,64 @@
 
 #include "config.h"
 #include "driver/gpio.h"
-#include "driver/gpio_filter.h"
+#include "esp_err.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "hal/gpio_types.h"
+#include <math.h>
+#include <string.h>
 
 static const char *TAG = "INPUT_HANDLER";
 
 static volatile uint64_t last_press_time = 0;
+
+static volatile struct button_state current_button_state = {false, false,
+                                                            false};
+static volatile struct button_state previous_button_state = {false, false,
+                                                             false};
 static QueueHandle_t input_queue;
 
-static void IRAM_ATTR buttonISR(void *args) {
+static void IRAM_ATTR buttonPollingISR(void *args) {
   // Debouncing
-  uint64_t now = esp_timer_get_time();
-  if ((now - last_press_time) > (DEBOUNCE_DELAY_MS * 1000)) {
-    // Get which button was pressed from the args
-    button_types button_type = (uint32_t)args;
-    BaseType_t hp_task_woken = pdFALSE;
+  previous_button_state = current_button_state;
 
+  current_button_state.confirm_button_state =
+      gpio_get_level(CONFIRM_BUTTON_PIN) != 0;
+  current_button_state.increment_button_state =
+      gpio_get_level(INCREMENT_BUTTON_PIN) != 0;
+  current_button_state.decrement_button_state =
+      gpio_get_level(DECREMENT_BUTTON_PIN) != 0;
+
+  if (!previous_button_state.confirm_button_state &&
+      current_button_state.confirm_button_state) {
+    BaseType_t hp_task_woken = pdFALSE;
+    button_types button_type = BUTTON_TYPE_CONFIRM;
     xQueueSendToBackFromISR(input_queue, &button_type, &hp_task_woken);
     if (hp_task_woken) {
       portYIELD_FROM_ISR();
     }
-    last_press_time = now;
+  }
+
+  if (!previous_button_state.increment_button_state &&
+      current_button_state.increment_button_state) {
+    BaseType_t hp_task_woken = pdFALSE;
+    button_types button_type = BUTTON_TYPE_INCREMENT;
+    xQueueSendToBackFromISR(input_queue, &button_type, &hp_task_woken);
+    if (hp_task_woken) {
+      portYIELD_FROM_ISR();
+    }
+  }
+
+  if (!previous_button_state.decrement_button_state &&
+      current_button_state.decrement_button_state) {
+    BaseType_t hp_task_woken = pdFALSE;
+    button_types button_type = BUTTON_TYPE_DECREMENT;
+    xQueueSendToBackFromISR(input_queue, &button_type, &hp_task_woken);
+    if (hp_task_woken) {
+      portYIELD_FROM_ISR();
+    }
   }
 }
 
@@ -38,35 +72,20 @@ void setupGpio(void) {
       .pin_bit_mask = (1ULL << INCREMENT_BUTTON_PIN) |
                       (1ULL << DECREMENT_BUTTON_PIN) |
                       (1ULL << CONFIRM_BUTTON_PIN),
-      .pull_down_en = 0,
-      .pull_up_en = 1,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .pull_up_en = GPIO_PULLUP_ENABLE,
   };
   ESP_LOGD(TAG, "Configuring GPIO");
   ESP_ERROR_CHECK(gpio_config(&gpio_conf));
 
-  gpio_pin_glitch_filter_config_t filter_conf = {
-      .clk_src = GLITCH_FILTER_CLK_SRC_DEFAULT,
-      .gpio_num = INCREMENT_BUTTON_PIN,
-  };
-  gpio_glitch_filter_handle_t increment_filter_handle = nullptr;
-  ESP_LOGD(TAG, "Configuring Glitch Filter");
+  ESP_LOGD(TAG, "Setting up Button Polling ISR Timer");
+  esp_timer_create_args_t timer_args = {.callback = buttonPollingISR,
+                                        .name = "Button Polling Timer"};
+  esp_timer_handle_t timer_handle = nullptr;
+  ESP_ERROR_CHECK(esp_timer_create(&timer_args, &timer_handle));
   ESP_ERROR_CHECK(
-      gpio_new_pin_glitch_filter(&filter_conf, &increment_filter_handle));
-  ESP_ERROR_CHECK(gpio_glitch_filter_enable(increment_filter_handle));
-
-  ESP_LOGD(TAG, "Installing ISR Service");
-  esp_err_t err = gpio_install_isr_service(0);
-  ESP_LOGD(TAG, "ISR Service result: %i", err);
-
-  ESP_LOGD(TAG, "Adding ISR Handlers");
-  ESP_ERROR_CHECK(
-      gpio_isr_handler_add(INCREMENT_BUTTON_PIN, &buttonISR,
-                           (void *)(uint32_t)(BUTTON_TYPE_INCREMENT)));
-  ESP_ERROR_CHECK(
-      gpio_isr_handler_add(DECREMENT_BUTTON_PIN, &buttonISR,
-                           (void *)(uint32_t)(BUTTON_TYPE_DECREMENT)));
-  ESP_ERROR_CHECK(gpio_isr_handler_add(
-      CONFIRM_BUTTON_PIN, &buttonISR, (void *)(uint32_t)(BUTTON_TYPE_CONFIRM)));
+      esp_timer_start_periodic(timer_handle, 10 * 1000)); // Run every 10ms
+  ESP_LOGD(TAG, "Set up Button Polling ISR Timer");
 }
 
 void processInputs(void) {
