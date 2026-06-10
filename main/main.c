@@ -4,14 +4,12 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/projdefs.h"
 #include "freertos/task.h"
-#include "sdkconfig.h"
 #include <inttypes.h>
-#include <stdio.h>
 
 // U8G2 OLED Graphics Library
 #include "u8g2.h"
-#include "u8g2_esp32_hal.h"
 
 // Other ham_bridge components
 #include "config.h"
@@ -31,7 +29,7 @@ void app_main(void) {
 
   /* Print chip information */
   esp_chip_info_t chip_info;
-  uint32_t flash_size;
+  uint32_t flash_size = 0;
   esp_chip_info(&chip_info);
   ESP_LOGI(TAG, "This is %s chip with %d CPU core(s), %s%s%s%s, ",
            CONFIG_IDF_TARGET, chip_info.cores,
@@ -58,7 +56,7 @@ void app_main(void) {
            esp_get_minimum_free_heap_size());
 
   ESP_LOGI(TAG, "Setting Up GPIO Callbacks");
-  setup_gpio();
+  setupGpio();
   ESP_LOGI(TAG, "Set Up GPIO Callbacks");
 
   // Init I2C Master Bus
@@ -70,7 +68,7 @@ void app_main(void) {
       .scl_io_num = PIN_SCL,
       .clk_source = I2C_CLK_SRC_DEFAULT,
       .glitch_ignore_cnt = 7,
-      .flags.enable_internal_pullup = true,
+      .flags.enable_internal_pullup = 1,
   };
   ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_cfg, &i2c_bus_handle));
   i2c_master_bus_reset(i2c_bus_handle);
@@ -79,19 +77,21 @@ void app_main(void) {
   initializeU8G2(&u8g2, &i2c_bus_handle);
 
   ESP_LOGI(TAG, "Initializing I2S Driver");
-  i2s_driver_init();
+  i2sDriverInit();
   ESP_LOGI(TAG, "Initialized I2S Driver");
 
   ESP_LOGI(TAG, "Initializing I2S Codec");
-  es8388_codec_init(i2c_bus_handle);
+  es8388CodecInit(i2c_bus_handle);
   ESP_LOGI(TAG, "Initialized I2S Codec");
 
   ESP_LOGI(TAG, "Starting music task");
-  xTaskCreate(i2s_music, "i2s_music", 4096, NULL, 5, NULL);
+  xTaskCreate((TaskFunction_t)playI2sMusic, "i2s_music", 4096, NULL, 5,
+              nullptr);
   ESP_LOGI(TAG, "Created music task");
 
   ESP_LOGI(TAG, "Starting Input Handler Task");
-  xTaskCreate(process_inputs, "process_inputs", 4096, NULL, 5, NULL);
+  xTaskCreate((TaskFunction_t)processInputs, "process_inputs", 4096, NULL, 5,
+              nullptr);
   ESP_LOGI(TAG, "Created Input Handler Task");
 
   while (true) {

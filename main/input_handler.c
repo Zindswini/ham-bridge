@@ -1,11 +1,19 @@
 #include "input_handler.h"
 
+#include "config.h"
+#include "driver/gpio.h"
+#include "driver/gpio_filter.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+
 static const char *TAG = "INPUT_HANDLER";
 
 static volatile uint64_t last_press_time = 0;
 static QueueHandle_t input_queue;
 
-static void IRAM_ATTR button_isr(void *args) {
+static void IRAM_ATTR buttonISR(void *args) {
   // Debouncing
   uint64_t now = esp_timer_get_time();
   if ((now - last_press_time) > (DEBOUNCE_DELAY_MS * 1000)) {
@@ -21,7 +29,7 @@ static void IRAM_ATTR button_isr(void *args) {
   }
 }
 
-void setup_gpio(void) {
+void setupGpio(void) {
   input_queue = xQueueCreate(10, sizeof(uint32_t));
 
   gpio_config_t gpio_conf = {
@@ -40,7 +48,7 @@ void setup_gpio(void) {
       .clk_src = GLITCH_FILTER_CLK_SRC_DEFAULT,
       .gpio_num = INCREMENT_BUTTON_PIN,
   };
-  gpio_glitch_filter_handle_t increment_filter_handle;
+  gpio_glitch_filter_handle_t increment_filter_handle = nullptr;
   ESP_LOGD(TAG, "Configuring Glitch Filter");
   ESP_ERROR_CHECK(
       gpio_new_pin_glitch_filter(&filter_conf, &increment_filter_handle));
@@ -52,21 +60,19 @@ void setup_gpio(void) {
 
   ESP_LOGD(TAG, "Adding ISR Handlers");
   ESP_ERROR_CHECK(
-      gpio_isr_handler_add(INCREMENT_BUTTON_PIN, &button_isr,
+      gpio_isr_handler_add(INCREMENT_BUTTON_PIN, &buttonISR,
                            (void *)(uint32_t)(BUTTON_TYPE_INCREMENT)));
   ESP_ERROR_CHECK(
-      gpio_isr_handler_add(DECREMENT_BUTTON_PIN, &button_isr,
+      gpio_isr_handler_add(DECREMENT_BUTTON_PIN, &buttonISR,
                            (void *)(uint32_t)(BUTTON_TYPE_DECREMENT)));
-  ESP_ERROR_CHECK(
-      gpio_isr_handler_add(CONFIRM_BUTTON_PIN, &button_isr,
-                           (void *)(uint32_t)(BUTTON_TYPE_CONFIRM)));
+  ESP_ERROR_CHECK(gpio_isr_handler_add(
+      CONFIRM_BUTTON_PIN, &buttonISR, (void *)(uint32_t)(BUTTON_TYPE_CONFIRM)));
 }
 
-void process_inputs(void *args) {
-  uint32_t next_button;
+void processInputs(void) {
+  uint32_t next_button = -1;
   while (true) {
     xQueueReceive(input_queue, &next_button, portMAX_DELAY);
     ESP_LOGI(TAG, "Received button press from queue: %i", next_button);
   }
-  return;
 }

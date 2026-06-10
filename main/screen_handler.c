@@ -1,5 +1,10 @@
 #include "screen_handler.h"
 
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "u8g2.h"
+#include "u8g2_esp32_hal.h"
+
 static const char *TAG = "SCREEN_HANDLER";
 
 void drawScreen(u8g2_t *u8g2) {

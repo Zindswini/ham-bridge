@@ -11,6 +11,8 @@
 #define PIN_DIN 16
 #define PIN_SCLK 2
 #define PIN_MCLK 0
+#define PIN_PA 6
+#define VCC_VOLTAGE 3.3F
 
 // I2S Global Sample Rate
 #define I2S_SAMPLE_RATE 44100

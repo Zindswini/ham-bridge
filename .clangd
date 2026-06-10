@@ -1,5 +1,6 @@
 CompileFlags:
     Remove: [-f*, -m*]
+    Add: [-Wextra, -Wall]
 Diagnostics:
   ClangTidy:
     Add:
@@ -8,5 +9,10 @@ Diagnostics:
       - modernize-*
       - cppcoreguidelines-*
       - performance-*
+    Remove:
+      - readability-function-cognitive-complexity
+      - cppcoreguidelines-avoid-non-const-global-variables
+      - cppcoreguidelines-avoid-magic-numbers
+      - readability-magic-numbers
     CheckOptions:
       readability-identifier-naming.FunctionCase: camelBack

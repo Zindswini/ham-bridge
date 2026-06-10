@@ -1,12 +1,23 @@
 #include "i2s_handler.h"
+#include "config.h"
+
+#include "driver/i2c_types.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include <stdio.h>
+
+// Espressif I2S Codec Library
+#include "driver/i2s_std.h"
+#include "esp_codec_dev.h"
+#include "esp_codec_dev_defaults.h"
 
 // I2S Handles
-static i2s_chan_handle_t tx_handle = NULL;
-static i2s_chan_handle_t rx_handle = NULL;
+static i2s_chan_handle_t tx_handle = nullptr;
+static i2s_chan_handle_t rx_handle = nullptr;
 
 static const char *TAG = "I2S_HANDLER";
 
-esp_err_t i2s_driver_init(void) {
+esp_err_t i2sDriverInit(void) {
   i2s_chan_config_t chan_cfg =
       I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
   chan_cfg.auto_clear = true;
@@ -25,9 +36,9 @@ esp_err_t i2s_driver_init(void) {
               .dout = PIN_DOUT,
               .invert_flags =
                   {
-                      .mclk_inv = false,
-                      .bclk_inv = false,
-                      .ws_inv = false,
+                      .mclk_inv = 0,
+                      .bclk_inv = 0,
+                      .ws_inv = 0,
                   },
           },
   };
@@ -45,7 +56,7 @@ esp_err_t i2s_driver_init(void) {
   return ESP_OK;
 }
 
-esp_err_t es8388_codec_init(i2c_master_bus_handle_t i2c_bus_handle) {
+esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle) {
   // Create I2S control interface with I2C bus handle
   ESP_LOGD(TAG, "Initializing I2S I2C Config");
   audio_codec_i2c_cfg_t i2s_i2c_cfg = {
@@ -75,12 +86,12 @@ esp_err_t es8388_codec_init(i2c_master_bus_handle_t i2c_bus_handle) {
       .gpio_if = gpio_if,
       .codec_mode = ESP_CODEC_DEV_WORK_MODE_BOTH,
       .master_mode = false,
-      .pa_pin = 6, // ?
+      .pa_pin = PIN_PA,
       .pa_reverted = false,
       .hw_gain =
           {
-              .pa_voltage = 3.3,
-              .codec_dac_voltage = 3.3,
+              .pa_voltage = VCC_VOLTAGE,
+              .codec_dac_voltage = VCC_VOLTAGE,
               .pa_gain = 0,
           },
   };
@@ -105,6 +116,7 @@ esp_err_t es8388_codec_init(i2c_master_bus_handle_t i2c_bus_handle) {
                                             .channel_mask = 0x03,
                                             .sample_rate = I2S_SAMPLE_RATE,
                                             .mclk_multiple = I2S_MCLK_MULITPLE};
+
   if (esp_codec_dev_open(codec_handle, &sample_cfg) != ESP_CODEC_DEV_OK) {
     ESP_LOGE(TAG, "Open codec device failed");
     return ESP_FAIL;
@@ -118,7 +130,7 @@ esp_err_t es8388_codec_init(i2c_master_bus_handle_t i2c_bus_handle) {
   return ESP_OK;
 }
 
-void i2s_music(void *args) {
+void playI2sMusic(void) {
   esp_err_t status = ESP_OK;
   size_t bytes_written = 0;
   uint8_t *data_ptr = (uint8_t *)music_pcm_start;
