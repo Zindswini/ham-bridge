@@ -1,2 +1,12 @@
 CompileFlags:
     Remove: [-f*, -m*]
+Diagnostics:
+  ClangTidy:
+    Add:
+      - google-*
+      - readability-*
+      - modernize-*
+      - cppcoreguidelines-*
+      - performance-*
+    CheckOptions:
+      readability-identifier-naming.FunctionCase: camelBack

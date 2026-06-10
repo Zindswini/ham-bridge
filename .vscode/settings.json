@@ -1,0 +1,23 @@
+{
+  "idf.port": "/dev/ttyACM0",
+  "idf.currentSetup": "/var/home/bailey/Documents/espbox/.espressif/v6.0.1/esp-idf",
+  "idf.flashType": "UART",
+  "idf.openOcdConfigs": [
+    "board/esp32s3-builtin.cfg"
+  ],
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32s3"
+  },
+  "clangd.path": "/var/home/bailey/Documents/espbox/.espressif/tools/esp-clang/esp-20.1.1_20250829/esp-clang/bin/clangd",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--clang-tidy",
+    "--compile-commands-dir=/run/host/var/home/bailey/Documents/git/ham-bridge/build"
+  ],
+  "C_Cpp.formatting": "clangFormat",
+  "C_Cpp.clang_format_style": "Google",
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "editor.formatOnSave": true,
+  "editor.formatOnType": true,
+}
