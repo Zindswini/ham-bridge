@@ -21,7 +21,6 @@ static void IRAM_ATTR button_isr(void *args)
         }
         last_press_time = now;
     }
-
 }
 
 void setup_gpio(void)
@@ -29,14 +28,23 @@ void setup_gpio(void)
     input_queue = xQueueCreate(10, sizeof(uint32_t));
 
     gpio_config_t gpio_conf = {
-        .intr_type = GPIO_INTR_POSEDGE,
+        .intr_type = GPIO_INTR_NEGEDGE,
         .mode = GPIO_MODE_INPUT,
         .pin_bit_mask = (1ULL << INCREMENT_BUTTON_PIN) | (1ULL << DECREMENT_BUTTON_PIN) | (1ULL << CONFIRM_BUTTON_PIN),
         .pull_down_en = 0,
-        .pull_up_en = 0,
+        .pull_up_en = 1,
     };
     ESP_LOGD(TAG, "Configuring GPIO");
     ESP_ERROR_CHECK(gpio_config(&gpio_conf));
+
+    gpio_pin_glitch_filter_config_t filter_conf = {
+        .clk_src = GLITCH_FILTER_CLK_SRC_DEFAULT,
+        .gpio_num = INCREMENT_BUTTON_PIN,
+    };
+    gpio_glitch_filter_handle_t increment_filter_handle;
+    ESP_LOGD(TAG, "Configuring Glitch Filter");
+    ESP_ERROR_CHECK(gpio_new_pin_glitch_filter(&filter_conf, &increment_filter_handle));
+    ESP_ERROR_CHECK(gpio_glitch_filter_enable(increment_filter_handle));
 
     ESP_LOGD(TAG, "Installing ISR Service");
     esp_err_t err = gpio_install_isr_service(0);
