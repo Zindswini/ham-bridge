@@ -21,7 +21,6 @@
 static const char *TAG = "MAIN";
 
 i2c_master_bus_handle_t i2c_bus_handle;
-u8g2_t u8g2;
 uint32_t last_draw_time;
 
 void app_main(void) {
@@ -56,9 +55,11 @@ void app_main(void) {
   ESP_LOGI(TAG, "Minimum free heap size: %" PRIu32 " bytes",
            esp_get_minimum_free_heap_size());
 
-  ESP_LOGI(TAG, "Setting Up GPIO Callbacks");
-  setupGpio();
-  ESP_LOGI(TAG, "Set Up GPIO Callbacks");
+  // Initialize Drivers and Objects
+
+  ESP_LOGI(TAG, "Setting Up Button GPIO and Timer");
+  setupButtonGPIOTimer();
+  ESP_LOGI(TAG, "Set Up Button GPIO and Timer");
 
   // Init I2C Master Bus
   ESP_LOGI(TAG, "Initializing I2C Bus");
@@ -75,7 +76,9 @@ void app_main(void) {
   i2c_master_bus_reset(i2c_bus_handle);
   ESP_LOGI(TAG, "Initialized I2C Bus at address %p", (void *)i2c_bus_handle);
 
-  initializeU8G2(&u8g2, &i2c_bus_handle);
+  ESP_LOGI(TAG, "Initializing U8G2 Display Object");
+  initializeU8G2(&i2c_bus_handle);
+  ESP_LOGI(TAG, "Initialized U8G2 Display Structure");
 
   ESP_LOGI(TAG, "Initializing I2S Driver");
   i2sDriverInit();
@@ -89,18 +92,20 @@ void app_main(void) {
   setupEthernet();
   ESP_LOGI(TAG, "Initialized Ethernet Driver");
 
+  // Start FreeRTOS Tasks
+
   ESP_LOGI(TAG, "Starting music task");
   xTaskCreate((TaskFunction_t)playI2sMusic, "i2s_music", 4096, NULL, 5,
               nullptr);
   ESP_LOGI(TAG, "Created music task");
 
   ESP_LOGI(TAG, "Starting Input Handler Task");
-  xTaskCreate((TaskFunction_t)processInputs, "process_inputs", 4096, NULL, 5,
-              nullptr);
+  xTaskCreate((TaskFunction_t)processInputsTask, "process_inputs", 4096, NULL,
+              5, nullptr);
   ESP_LOGI(TAG, "Created Input Handler Task");
 
-  while (true) {
-    drawScreen(&u8g2);
-    vTaskDelay(100);
-  }
+  ESP_LOGI(TAG, "Starting Screen Refresh Task");
+  xTaskCreate((TaskFunction_t)screenRefreshTask, "screen_refresh", 4096, NULL,
+              5, nullptr);
+  ESP_LOGI(TAG, "Created Screen Refresh Task");
 }

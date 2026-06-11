@@ -63,7 +63,7 @@ static void IRAM_ATTR buttonPollingISR(void *args) {
   }
 }
 
-void setupGpio(void) {
+void setupButtonGPIOTimer(void) {
   input_queue = xQueueCreate(10, sizeof(uint32_t));
 
   gpio_config_t gpio_conf = {
@@ -88,7 +88,7 @@ void setupGpio(void) {
   ESP_LOGD(TAG, "Set up Button Polling ISR Timer");
 }
 
-void processInputs(void) {
+void processInputsTask(void) {
   uint32_t next_button = -1;
   while (true) {
     xQueueReceive(input_queue, &next_button, portMAX_DELAY);

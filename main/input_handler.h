@@ -13,7 +13,7 @@ struct button_state {
   bool confirm_button_state;
 };
 
-void setupGpio(void);
-void processInputs(void);
+void setupButtonGPIOTimer(void);
+void processInputsTask(void);
 
 #endif
