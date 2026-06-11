@@ -13,6 +13,7 @@
 
 // Other ham_bridge components
 #include "config.h"
+#include "ethernet_handler.h"
 #include "i2s_handler.h"
 #include "input_handler.h"
 #include "screen_handler.h"
@@ -83,6 +84,10 @@ void app_main(void) {
   ESP_LOGI(TAG, "Initializing I2S Codec");
   es8388CodecInit(i2c_bus_handle);
   ESP_LOGI(TAG, "Initialized I2S Codec");
+
+  ESP_LOGI(TAG, "Initializing Ethernet Driver");
+  setupEthernet();
+  ESP_LOGI(TAG, "Initialized Ethernet Driver");
 
   ESP_LOGI(TAG, "Starting music task");
   xTaskCreate((TaskFunction_t)playI2sMusic, "i2s_music", 4096, NULL, 5,
