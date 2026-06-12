@@ -24,22 +24,34 @@ static const char *TAG = "SCREEN_HANDLER";
 enum menu_item_type : uint8_t {
   MENU_ITEM_TYPE_NUMERICAL = 0,
   MENU_ITEM_TYPE_TOGGLE = 1,
+  MENU_ITEM_TYPE_SUBMENU = 2,
+  MENU_ITEM_TYPE_BACK = 3,
 };
 
 struct menuListObject {
-  char const *text;
-  menu_item_type item_type;
-  bool interactable;
-  bool highlighted;
-  void *value;
+  const char *text;
+  const menu_item_type item_type;
+  const bool interactable;
+
+  // If numerical, value is uint32_t
+  // If toggle, value is bool
+  // if submenu, value is menuList
+  // if back, value is menuList
+  const void *value;
+
+  // Method called to get its value
+  const void *getterMethod;
+  // Whether the getter is called on refresh
+  const bool poll;
+
+  // If interactable, method called on confirm
+  const void *setterMethod;
 };
 
 struct screenInformation {
-  uint8_t time_hours = 0;
-  uint8_t time_minutes = 0;
-  uint8_t time_seconds = 0;
+  tm timeinfo;
 
-  std::array<std::shared_ptr<menuListObject>, 10> menuList;
+  std::shared_ptr<std::array<std::shared_ptr<menuListObject>, 10>> menuList;
   std::array<const uint8_t *, 4> iconList;
 };
 
@@ -74,8 +86,8 @@ extern "C" void drawScreen() {
 
   // Draw Time
   std::string timeString =
-      std::format("{:02d}:{:02d}:{:02d}", displayState.time_hours,
-                  displayState.time_minutes, displayState.time_seconds);
+      std::format("{:02d}:{:02d}:{:02d}", displayState.timeinfo.tm_hour,
+                  displayState.timeinfo.tm_min, displayState.timeinfo.tm_sec);
   u8g2_DrawStr(&u8g2,
                (u8g2.width - u8g2_GetStrWidth(&u8g2, timeString.c_str())), 8,
                timeString.c_str());
@@ -86,23 +98,21 @@ extern "C" void drawScreen() {
   // Draw menu items
   i = 0;
 
-  while (displayState.menuList.at(i) != nullptr) {
+  while (displayState.menuList.get()->at(i) != nullptr) {
     struct menuListObject *currentListObject =
-        displayState.menuList.at(i).get();
+        displayState.menuList.get()->at(i).get();
     // Draw box around ACTIVE menu item
-    if (currentListObject->highlighted) {
-      u8g2_DrawFrame(
-          &u8g2, 0, MENU_TOP_PADDING + ((MENU_FRAME_HEIGHT + MENU_SPACING) * i),
-          u8g2.width, MENU_FRAME_HEIGHT);
-    }
+    u8g2_DrawFrame(&u8g2, 0,
+                   MENU_TOP_PADDING + ((MENU_FRAME_HEIGHT + MENU_SPACING) * i),
+                   u8g2.width, MENU_FRAME_HEIGHT);
     // Draw text description element of menu item
     u8g2_DrawStr(&u8g2, MENU_PADDING,
                  MENU_TOP_PADDING + MENU_PADDING + TEXT_HEIGHT +
                      ((MENU_FRAME_HEIGHT + MENU_SPACING) * i),
-                 displayState.menuList.at(i)->text);
+                 currentListObject->text);
 
     std::string value_string;
-    switch (displayState.menuList.at(i)->item_type) {
+    switch (currentListObject->item_type) {
     case MENU_ITEM_TYPE_NUMERICAL:
       // Interpret value as uint32 and
       // Draw number as string on right side
@@ -118,6 +128,10 @@ extern "C" void drawScreen() {
     case MENU_ITEM_TYPE_TOGGLE:
       // Interpret value as bool and
       // Draw true as filled box, false as empty
+      break;
+    case MENU_ITEM_TYPE_SUBMENU:
+      break;
+    case MENU_ITEM_TYPE_BACK:
       break;
     }
     i++;
@@ -145,15 +159,19 @@ extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
   u8g2_SetPowerSave(&u8g2, 0);
   ESP_LOGI(TAG, "Initialized U8G2 and Display");
 
-  std::shared_ptr<menuListObject> firstOption =
-      std::make_shared<menuListObject>();
-  firstOption->text = "List item 1";
-  firstOption->item_type = MENU_ITEM_TYPE_NUMERICAL,
-  firstOption->highlighted = false, firstOption->interactable = false,
-  firstOption->value = (void *)99999;
-  displayState.menuList[0] = firstOption;
-  displayState.menuList[1] = firstOption;
-  displayState.menuList[2] = firstOption;
+  // Construct Top Level Menu
+  auto topLevelMenu =
+      std::make_shared<std::array<std::shared_ptr<menuListObject>, 10>>();
+  topLevelMenu->at(0) = std::make_shared<menuListObject>(
+      menuListObject{.text = "Example",
+                     .item_type = MENU_ITEM_TYPE_NUMERICAL,
+                     .interactable = false,
+                     .value = (void *)9999,
+                     .getterMethod = nullptr,
+                     .poll = false,
+                     .setterMethod = nullptr});
+
+  displayState.menuList = topLevelMenu;
 
   displayState.iconList[0] = HAM_BRIDGE_ICON_mic;
   displayState.iconList[1] = HAM_BRIDGE_ICON_lan_enable;
@@ -167,9 +185,7 @@ void updateDisplayState() {
   time(&now);
   localtime_r(&now, &timeinfo);
 
-  displayState.time_hours = timeinfo.tm_hour;
-  displayState.time_minutes = timeinfo.tm_min;
-  displayState.time_seconds = timeinfo.tm_sec;
+  displayState.timeinfo = timeinfo;
 }
 
 extern "C" void screenRefreshTask() {
