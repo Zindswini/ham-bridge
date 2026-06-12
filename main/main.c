@@ -8,6 +8,7 @@
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
 #include <inttypes.h>
+#include <stdlib.h>
 #include <time.h>
 
 // U8G2 OLED Graphics Library
@@ -24,6 +25,8 @@ static const char *TAG = "MAIN";
 
 i2c_master_bus_handle_t i2c_bus_handle;
 uint32_t last_draw_time;
+
+void debugOutputTask(void) {}
 
 void app_main(void) {
   vTaskDelay(pdMS_TO_TICKS(1500)); // Delay for monitoring reconnect
@@ -109,7 +112,7 @@ void app_main(void) {
   // Start FreeRTOS Tasks
   drawLoadingScreen("Starting Tasks");
   ESP_LOGI(TAG, "Starting music task");
-  xTaskCreate((TaskFunction_t)playI2sMusic, "i2s_music", 4096, NULL, 5,
+  xTaskCreate((TaskFunction_t)playI2sMusic, "i2s_music", 4096, NULL, 3,
               nullptr);
   ESP_LOGI(TAG, "Created music task");
 
@@ -120,6 +123,15 @@ void app_main(void) {
 
   ESP_LOGI(TAG, "Starting Screen Refresh Task");
   xTaskCreate((TaskFunction_t)screenRefreshTask, "screen_refresh", 4096, NULL,
-              5, nullptr);
+              8, nullptr);
   ESP_LOGI(TAG, "Created Screen Refresh Task");
+
+  while (1) {
+    char *outBuf;
+    outBuf = malloc(sizeof(char) * 2048);
+    vTaskList(outBuf);
+    ESP_LOGI(TAG, outBuf);
+    free(outBuf);
+    vTaskDelay(5000);
+  }
 }

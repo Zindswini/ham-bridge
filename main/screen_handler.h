@@ -2,6 +2,7 @@
 #define SCREEN_HANDLER_H
 
 #include "driver/i2c_types.h"
+#include "input_handler.h"
 
 #define MENU_TOP_PADDING 12
 #define MENU_SPACING 2
@@ -11,6 +12,8 @@
 #define ICON_WIDTH 8
 #define ICON_HEIGHT 12
 #define MENU_FRAME_HEIGHT (TEXT_HEIGHT + (2 * MENU_PADDING))
+// how many pixels the inactive menu elements are squished by:
+#define MENU_INACTIVE_SQUISH 16
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,6 +24,8 @@ void drawLoadingScreen(char *loadingText);
 
 void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle);
 void screenRefreshTask(void);
+
+void processIncomingInput(button_types incomingButton);
 #ifdef __cplusplus
 }
 #endif

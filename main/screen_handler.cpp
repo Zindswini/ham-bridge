@@ -5,13 +5,17 @@
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
 #include "icons.h"
+#include "input_handler.h"
 #include "u8g2.h"
 #include "u8g2_esp32_hal.h"
 #include "u8x8.h"
 #include <array>
+#include <cstddef>
 #include <ctime>
 #include <format>
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include <stdint.h>
 #include <stdio.h>
 #include <string>
@@ -29,34 +33,38 @@ enum menu_item_type : uint8_t {
 };
 
 struct menuListObject {
-  const char *text;
-  const menu_item_type item_type;
-  const bool interactable;
+  const char *text = "UNSET_MENU";
+  const menu_item_type item_type = MENU_ITEM_TYPE_NUMERICAL;
+  const bool editable = false;
 
   // If numerical, value is uint32_t
   // If toggle, value is bool
   // if submenu, value is menuList
   // if back, value is menuList
-  const void *value;
+  const int32_t value = 0;
+  const std::shared_ptr<std::array<std::shared_ptr<menuListObject>, 10>>
+      menuListValue = nullptr;
 
   // Method called to get its value
-  const void *getterMethod;
+  const void *getterMethod = nullptr;
   // Whether the getter is called on refresh
-  const bool poll;
+  const bool poll = false;
 
   // If interactable, method called on confirm
-  const void *setterMethod;
+  const void *setterMethod = nullptr;
 };
 
 struct screenInformation {
   tm timeinfo;
-
+  uint32_t menuIndex = 0;
   std::shared_ptr<std::array<std::shared_ptr<menuListObject>, 10>> menuList;
   std::array<const uint8_t *, 4> iconList;
 };
 
 u8g2_t u8g2;
+
 static struct screenInformation displayState;
+std::shared_mutex displayMutex;
 
 extern "C" void drawLoadingScreen(char *loadingText) {
   u8g2_ClearBuffer(&u8g2);
@@ -70,7 +78,61 @@ extern "C" void drawLoadingScreen(char *loadingText) {
   u8g2_SendBuffer(&u8g2);
 }
 
+void drawMenuItem(u8g2_uint_t y, menuListObject *menuItem, bool active,
+                  bool editing) {
+  uint32_t squish = !active ? MENU_INACTIVE_SQUISH : 0;
+  // Draw box around ACTIVE menu item
+  if (active) {
+    u8g2_DrawFrame(&u8g2, squish, y, u8g2.width - (2 * squish),
+                   MENU_FRAME_HEIGHT);
+  }
+  // Draw text description element of menu item
+  u8g2_DrawStr(&u8g2, squish + MENU_PADDING, y + MENU_PADDING + TEXT_HEIGHT,
+               menuItem->text);
+
+  std::string value_string;
+  bool value_bool;
+  switch (menuItem->item_type) {
+  case MENU_ITEM_TYPE_NUMERICAL:
+    // Interpret value as uint32 and
+    // Draw number as string on right side
+    value_string = std::format("{:d}", menuItem->value);
+    u8g2_DrawStr(&u8g2,
+                 (u8g2.width - MENU_PADDING - squish -
+                  u8g2_GetStrWidth(&u8g2, value_string.c_str())),
+                 y + MENU_PADDING + TEXT_HEIGHT, value_string.c_str());
+    break;
+  case MENU_ITEM_TYPE_TOGGLE:
+    // Interpret value as bool and
+    // Draw true as filled box, false as empty
+    value_bool = (menuItem->value != 0);
+    // Draw Box Frame (size is textheight x textheight)
+    u8g2_DrawFrame(&u8g2, (u8g2.width - MENU_PADDING - TEXT_HEIGHT - squish),
+                   y + MENU_PADDING, TEXT_HEIGHT, TEXT_HEIGHT);
+
+    if (value_bool) {
+      // Fill in box
+      u8g2_DrawBox(&u8g2,
+                   (u8g2.width - MENU_PADDING - TEXT_HEIGHT - squish + 2),
+                   y + MENU_PADDING + 2, TEXT_HEIGHT - 4, TEXT_HEIGHT - 4);
+    }
+    break;
+  case MENU_ITEM_TYPE_SUBMENU:
+    u8g2_DrawXBM(&u8g2, (u8g2.width - MENU_PADDING - squish - ICON_WIDTH),
+                 y + (MENU_PADDING / 2), ICON_WIDTH, ICON_HEIGHT,
+                 HAM_BRIDGE_ICON_arrowFWD);
+    break;
+  case MENU_ITEM_TYPE_BACK:
+    u8g2_DrawXBM(&u8g2, (u8g2.width - MENU_PADDING - squish - ICON_WIDTH),
+                 y + (MENU_PADDING / 2), ICON_WIDTH, ICON_HEIGHT,
+                 HAM_BRIDGE_ICON_arrowBWD);
+    break;
+  }
+}
+
 extern "C" void drawScreen() {
+  std::shared_lock lock(displayMutex);
+
   u8g2_ClearBuffer(&u8g2);
   u8g2_SetFont(&u8g2, u8g2_font_helvB08_tr);
 
@@ -96,52 +158,31 @@ extern "C" void drawScreen() {
   u8g2_DrawHLine(&u8g2, 0, 10, u8g2.width);
 
   // Draw menu items
-  i = 0;
-
-  while (displayState.menuList.get()->at(i) != nullptr) {
-    struct menuListObject *currentListObject =
-        displayState.menuList.get()->at(i).get();
-    // Draw box around ACTIVE menu item
-    u8g2_DrawFrame(&u8g2, 0,
-                   MENU_TOP_PADDING + ((MENU_FRAME_HEIGHT + MENU_SPACING) * i),
-                   u8g2.width, MENU_FRAME_HEIGHT);
-    // Draw text description element of menu item
-    u8g2_DrawStr(&u8g2, MENU_PADDING,
-                 MENU_TOP_PADDING + MENU_PADDING + TEXT_HEIGHT +
-                     ((MENU_FRAME_HEIGHT + MENU_SPACING) * i),
-                 currentListObject->text);
-
-    std::string value_string;
-    switch (currentListObject->item_type) {
-    case MENU_ITEM_TYPE_NUMERICAL:
-      // Interpret value as uint32 and
-      // Draw number as string on right side
-      value_string = std::format(
-          "{:d}", reinterpret_cast<uint32_t>(currentListObject->value));
-      u8g2_DrawStr(&u8g2,
-                   (u8g2.width - u8g2_GetStrWidth(&u8g2, value_string.c_str()) -
-                    MENU_PADDING),
-                   MENU_TOP_PADDING + MENU_PADDING + TEXT_HEIGHT +
-                       ((MENU_FRAME_HEIGHT + MENU_SPACING) * i),
-                   value_string.c_str());
-      break;
-    case MENU_ITEM_TYPE_TOGGLE:
-      // Interpret value as bool and
-      // Draw true as filled box, false as empty
-      break;
-    case MENU_ITEM_TYPE_SUBMENU:
-      break;
-    case MENU_ITEM_TYPE_BACK:
-      break;
-    }
-    i++;
+  // Draw top (previous) item
+  if (displayState.menuIndex > 0 &&
+      displayState.menuList.get()->at(displayState.menuIndex - 1) != nullptr) {
+    drawMenuItem(
+        MENU_TOP_PADDING + ((MENU_FRAME_HEIGHT + MENU_SPACING) * 0),
+        displayState.menuList.get()->at(displayState.menuIndex - 1).get(),
+        false, false);
+  }
+  // Draw Center (current) item
+  if (displayState.menuList.get()->at(displayState.menuIndex) != nullptr) {
+    drawMenuItem(MENU_TOP_PADDING + ((MENU_FRAME_HEIGHT + MENU_SPACING) * 1),
+                 displayState.menuList.get()->at(displayState.menuIndex).get(),
+                 true, false);
+  }
+  // Draw bottom (next) item
+  if (displayState.menuIndex < displayState.menuList->size() &&
+      displayState.menuList.get()->at(displayState.menuIndex + 1) != nullptr) {
+    drawMenuItem(
+        MENU_TOP_PADDING + ((MENU_FRAME_HEIGHT + MENU_SPACING) * 2),
+        displayState.menuList.get()->at(displayState.menuIndex + 1).get(),
+        false, false);
   }
 
-  int current_timestamp = pdTICKS_TO_MS(xTaskGetTickCount());
-  char timestamp_string[10];
-  snprintf(timestamp_string, 9, "%d", current_timestamp);
-
   u8g2_SendBuffer(&u8g2);
+  lock.release();
 }
 
 extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
@@ -159,17 +200,50 @@ extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
   u8g2_SetPowerSave(&u8g2, 0);
   ESP_LOGI(TAG, "Initialized U8G2 and Display");
 
-  // Construct Top Level Menu
   auto topLevelMenu =
       std::make_shared<std::array<std::shared_ptr<menuListObject>, 10>>();
-  topLevelMenu->at(0) = std::make_shared<menuListObject>(
-      menuListObject{.text = "Example",
-                     .item_type = MENU_ITEM_TYPE_NUMERICAL,
-                     .interactable = false,
-                     .value = (void *)9999,
-                     .getterMethod = nullptr,
-                     .poll = false,
-                     .setterMethod = nullptr});
+  auto debugStatMenu =
+      std::make_shared<std::array<std::shared_ptr<menuListObject>, 10>>();
+
+  // Put elements in top level menu
+  topLevelMenu->at(0) = std::make_shared<menuListObject>(menuListObject{
+      .text = "Example",
+      .item_type = MENU_ITEM_TYPE_NUMERICAL,
+      .value = 9999,
+  });
+
+  topLevelMenu->at(1) = std::make_shared<menuListObject>(menuListObject{
+      .text = "Example 2",
+      .item_type = MENU_ITEM_TYPE_TOGGLE,
+      .value = (int32_t)true,
+  });
+
+  topLevelMenu->at(2) = std::make_shared<menuListObject>(menuListObject{
+      .text = "Submenu 1",
+      .item_type = MENU_ITEM_TYPE_SUBMENU,
+      .menuListValue = debugStatMenu,
+  });
+
+  // Put elements in debug stat menu
+  debugStatMenu->at(0) = std::make_shared<menuListObject>(
+      menuListObject{.text = "Return",
+                     .item_type = MENU_ITEM_TYPE_BACK,
+                     .menuListValue = topLevelMenu});
+  debugStatMenu->at(1) = std::make_shared<menuListObject>(menuListObject{
+      .text = "Example",
+      .item_type = MENU_ITEM_TYPE_NUMERICAL,
+      .value = 9999,
+  });
+  debugStatMenu->at(2) = std::make_shared<menuListObject>(menuListObject{
+      .text = "Example 2",
+      .item_type = MENU_ITEM_TYPE_NUMERICAL,
+      .value = 9999,
+  });
+  debugStatMenu->at(3) = std::make_shared<menuListObject>(menuListObject{
+      .text = "Example 3",
+      .item_type = MENU_ITEM_TYPE_NUMERICAL,
+      .value = 9999,
+  });
 
   displayState.menuList = topLevelMenu;
 
@@ -194,4 +268,25 @@ extern "C" void screenRefreshTask() {
     drawScreen();
     vTaskDelay(pdMS_TO_TICKS(100));
   }
+}
+extern "C" void processIncomingInput(button_types incomingButton) {
+  std::unique_lock lock(displayMutex);
+  switch (incomingButton) {
+  case BUTTON_TYPE_INCREMENT:
+    if (displayState.menuIndex < displayState.menuList->size() - 1 &&
+        displayState.menuList->at(displayState.menuIndex + 1) != nullptr) {
+      displayState.menuIndex++;
+    }
+    break;
+  case BUTTON_TYPE_DECREMENT:
+    if (displayState.menuIndex > 0 &&
+        displayState.menuList->at(displayState.menuIndex - 1) != nullptr) {
+      displayState.menuIndex--;
+    }
+    break;
+  case BUTTON_TYPE_CONFIRM:
+    // displayState.menuIndex++;
+    break;
+  }
+  lock.release();
 }

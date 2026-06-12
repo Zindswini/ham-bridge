@@ -21,7 +21,7 @@ void setupButtonGPIOTimer(void);
 void processInputsTask(void);
 
 #ifdef __cplusplus
-{
+}
 #endif
 
 #endif // INPUT_HANDLER_H

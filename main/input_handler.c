@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "hal/gpio_types.h"
+#include "screen_handler.h"
 #include <math.h>
 #include <string.h>
 
@@ -92,6 +93,7 @@ void processInputsTask(void) {
   uint32_t next_button = -1;
   while (true) {
     xQueueReceive(input_queue, &next_button, portMAX_DELAY);
-    ESP_LOGI(TAG, "Received button press from queue: %i", next_button);
+    ESP_LOGD(TAG, "Received button press from queue: %i", next_button);
+    processIncomingInput(next_button);
   }
 }
