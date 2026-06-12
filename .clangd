@@ -16,3 +16,10 @@ Diagnostics:
       - readability-magic-numbers
     CheckOptions:
       readability-identifier-naming.FunctionCase: camelBack
+  # Suppress:
+  #   - Wold-style-cast # grrr, Esp-idf uses these a ton, makes every macro warn
+      
+If:
+  PathExclude: main/.*
+Diagnostics:
+  Suppress: '*'
