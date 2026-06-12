@@ -13,7 +13,15 @@ struct button_state {
   bool confirm_button_state;
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void setupButtonGPIOTimer(void);
 void processInputsTask(void);
 
+#ifdef __cplusplus
+{
 #endif
+
+#endif // INPUT_HANDLER_H

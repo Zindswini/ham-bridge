@@ -43,4 +43,4 @@ void drawScreen();
 void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle);
 void screenRefreshTask(void);
 
-#endif
+#endif // SCREEN_HANDLER_H

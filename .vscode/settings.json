@@ -1,6 +1,6 @@
 {
   "idf.port": "/dev/ttyACM0",
-  "idf.currentSetup": "/var/home/bailey/Documents/espbox/.espressif/v6.0.1/esp-idf",
+  "idf.currentSetup": "/home/bailey/Documents/espbox/.espressif/v6.0.1/esp-idf",
   "idf.flashType": "UART",
   "idf.openOcdConfigs": [
     "board/esp32s3-builtin.cfg"
