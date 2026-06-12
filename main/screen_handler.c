@@ -7,7 +7,10 @@
 #include "icons.h"
 #include "u8g2.h"
 #include "u8g2_esp32_hal.h"
+#include "u8x8.h"
+#include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 static const char *TAG = "SCREEN_HANDLER";
 
@@ -19,7 +22,8 @@ void drawScreen() {
   u8g2_SetFont(&u8g2, u8g2_font_helvB08_tr);
 
   // Draw Icons
-  for (int i = 0; i < displayState.iconListLength; i++) {
+  int i = 0;
+  while (displayState.iconList[i] != nullptr) {
     // draw icon
   }
 
@@ -34,13 +38,47 @@ void drawScreen() {
   // Draw Horizontal Line
   u8g2_DrawHLine(&u8g2, 0, 10, u8g2.width);
 
+  // Draw menu items
+  i = 0;
+
+  while (displayState.menuList[i] != nullptr) {
+    struct menuListObject *currentListObject = displayState.menuList[i];
+    // Draw box around ACTIVE menu item
+    if (currentListObject->highlighted) {
+      u8g2_DrawFrame(
+          &u8g2, 0, MENU_TOP_PADDING + ((MENU_FRAME_HEIGHT + MENU_SPACING) * i),
+          u8g2.width, MENU_FRAME_HEIGHT);
+    }
+    // Draw text description element of menu item
+    u8g2_DrawStr(&u8g2, MENU_PADDING,
+                 MENU_TOP_PADDING + MENU_PADDING + TEXT_HEIGHT +
+                     ((MENU_FRAME_HEIGHT + MENU_SPACING) * i),
+                 displayState.menuList[i]->text);
+
+    switch (displayState.menuList[i]->item_type) {
+    case MENU_ITEM_TYPE_NUMERICAL:
+      // Interpret value as uint32 and
+      // Draw number as string on right side
+      char value_string[10];
+      snprintf(value_string, 9, "%lu", (uint32_t)currentListObject->value);
+      u8g2_DrawStr(
+          &u8g2,
+          (u8g2.width - u8g2_GetStrWidth(&u8g2, value_string) - MENU_PADDING),
+          MENU_TOP_PADDING + MENU_PADDING + TEXT_HEIGHT +
+              ((MENU_FRAME_HEIGHT + MENU_SPACING) * i),
+          value_string);
+      break;
+    case MENU_ITEM_TYPE_TOGGLE:
+      // Interpret value as bool and
+      // Draw true as filled box, false as empty
+      break;
+    }
+    i++;
+  }
+
   int current_timestamp = pdTICKS_TO_MS(xTaskGetTickCount());
   char timestamp_string[10];
   snprintf(timestamp_string, 9, "%d", current_timestamp);
-
-  u8g2_DrawButtonUTF8(&u8g2, 64, 50,
-                      U8G2_BTN_SHADOW1 | U8G2_BTN_HCENTER | U8G2_BTN_BW2, 56, 2,
-                      2, timestamp_string);
 
   u8g2_SendBuffer(&u8g2);
 }
@@ -64,18 +102,15 @@ void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
   displayState.time_hours = 10;
   displayState.time_minutes = 11;
   displayState.time_seconds = 12;
-  displayState.iconList = nullptr;
-  displayState.iconListLength = 0;
 
-  struct menuListObject menuList[1];
-  struct menuListObject firstOption = {.text = "List item 1",
-                                       .item_type = MENU_ITEM_TYPE_NUMERICAL,
-                                       .highlighted = false,
-                                       .interactable = false,
-                                       .value = (void *)99999};
-  menuList[0] = firstOption;
-  displayState.menuList = menuList;
-  displayState.menuListLength = 1;
+  struct menuListObject *firstOption = malloc(sizeof(struct menuListObject));
+  firstOption->text = "List item 1";
+  firstOption->item_type = MENU_ITEM_TYPE_NUMERICAL,
+  firstOption->highlighted = false, firstOption->interactable = false,
+  firstOption->value = (void *)99999;
+  displayState.menuList[0] = firstOption;
+  displayState.menuList[1] = firstOption;
+  displayState.menuList[2] = firstOption;
 }
 
 void screenRefreshTask() {

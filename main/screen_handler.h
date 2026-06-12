@@ -5,6 +5,12 @@
 #include "u8g2.h"
 #include <stdint.h>
 
+#define MENU_TOP_PADDING 12
+#define MENU_SPACING 2
+#define MENU_PADDING 4
+#define TEXT_HEIGHT 8
+#define MENU_FRAME_HEIGHT (TEXT_HEIGHT + (2 * MENU_PADDING))
+
 typedef enum {
   MENU_ITEM_TYPE_NUMERICAL = 0,
   MENU_ITEM_TYPE_TOGGLE = 1,
@@ -28,11 +34,8 @@ struct screenInformation {
   uint8_t time_minutes;
   uint8_t time_seconds;
 
-  struct menuListObject *menuList;
-  uint8_t menuListLength;
-
-  struct iconListObject *iconList;
-  uint8_t iconListLength;
+  struct menuListObject *menuList[10];
+  struct iconListObject *iconList[4];
 };
 
 void drawScreen();
