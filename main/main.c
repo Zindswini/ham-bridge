@@ -2,11 +2,13 @@
 #include "esp_chip_info.h"
 #include "esp_flash.h"
 #include "esp_log.h"
+#include "esp_netif_sntp.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/projdefs.h"
 #include "freertos/task.h"
 #include <inttypes.h>
+#include <time.h>
 
 // U8G2 OLED Graphics Library
 #include "u8g2.h"
@@ -81,19 +83,31 @@ void app_main(void) {
   ESP_LOGI(TAG, "Initialized U8G2 Display Structure");
 
   ESP_LOGI(TAG, "Initializing I2S Driver");
+  drawLoadingScreen("Initializing I2S Driver");
   i2sDriverInit();
   ESP_LOGI(TAG, "Initialized I2S Driver");
 
   ESP_LOGI(TAG, "Initializing I2S Codec");
+  drawLoadingScreen("Initializing I2S Codec");
   es8388CodecInit(i2c_bus_handle);
   ESP_LOGI(TAG, "Initialized I2S Codec");
 
   ESP_LOGI(TAG, "Initializing Ethernet Driver");
+  drawLoadingScreen("Initializing Eth Driver");
   setupEthernet();
   ESP_LOGI(TAG, "Initialized Ethernet Driver");
 
-  // Start FreeRTOS Tasks
+  // Set timezone
+  ESP_LOGI(TAG, "Configuring NTP & TZ");
+  drawLoadingScreen("Configuring NTP\nand Time Zone");
+  esp_sntp_config_t sntp_config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+  esp_netif_sntp_init(&sntp_config);
+  setenv("TZ", "UTC", 1);
+  tzset();
+  ESP_LOGI(TAG, "Configured NTP and Time Zone");
 
+  // Start FreeRTOS Tasks
+  drawLoadingScreen("Starting Tasks");
   ESP_LOGI(TAG, "Starting music task");
   xTaskCreate((TaskFunction_t)playI2sMusic, "i2s_music", 4096, NULL, 5,
               nullptr);

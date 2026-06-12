@@ -9,12 +9,14 @@
 #include "u8g2_esp32_hal.h"
 #include "u8x8.h"
 #include <array>
+#include <ctime>
 #include <format>
 #include <memory>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 #include <string>
+#include <sys/_timeval.h>
+#include <sys/time.h>
 #include <sys/types.h>
 
 static const char *TAG = "SCREEN_HANDLER";
@@ -32,22 +34,29 @@ struct menuListObject {
   void *value;
 };
 
-struct iconListObject {
-  uint8_t *icon;
-  uint32_t size;
-};
-
 struct screenInformation {
   uint8_t time_hours = 0;
   uint8_t time_minutes = 0;
   uint8_t time_seconds = 0;
 
   std::array<std::shared_ptr<menuListObject>, 10> menuList;
-  std::array<std::shared_ptr<iconListObject>, 4> iconList;
+  std::array<const uint8_t *, 4> iconList;
 };
 
 u8g2_t u8g2;
 static struct screenInformation displayState;
+
+extern "C" void drawLoadingScreen(char *loadingText) {
+  u8g2_ClearBuffer(&u8g2);
+  u8g2_SetFont(&u8g2, u8g2_font_helvB08_tr);
+
+  // Draw message as centered text
+  u8g2_DrawStr(&u8g2,
+               u8g2.width / 2 - (u8g2_GetStrWidth(&u8g2, loadingText) / 2),
+               u8g2.height / 2, loadingText);
+
+  u8g2_SendBuffer(&u8g2);
+}
 
 extern "C" void drawScreen() {
   u8g2_ClearBuffer(&u8g2);
@@ -56,12 +65,16 @@ extern "C" void drawScreen() {
   // Draw Icons
   int i = 0;
   while (displayState.iconList.at(i) != nullptr) {
-    // draw icon
+    const uint8_t *currentIconObject =
+        reinterpret_cast<const uint8_t *>(displayState.iconList.at(i));
+    u8g2_DrawXBM(&u8g2, i * (ICON_WIDTH + ICON_PADDING), 0, ICON_WIDTH,
+                 ICON_HEIGHT, currentIconObject);
+    i++;
   }
 
   // Draw Time
   std::string timeString =
-      std::format("%02u:%02u:%02u", displayState.time_hours,
+      std::format("{:02d}:{:02d}:{:02d}", displayState.time_hours,
                   displayState.time_minutes, displayState.time_seconds);
   u8g2_DrawStr(&u8g2,
                (u8g2.width - u8g2_GetStrWidth(&u8g2, timeString.c_str())), 8,
@@ -93,7 +106,8 @@ extern "C" void drawScreen() {
     case MENU_ITEM_TYPE_NUMERICAL:
       // Interpret value as uint32 and
       // Draw number as string on right side
-      value_string = std::format("%lu", currentListObject->value);
+      value_string = std::format(
+          "{:d}", reinterpret_cast<uint32_t>(currentListObject->value));
       u8g2_DrawStr(&u8g2,
                    (u8g2.width - u8g2_GetStrWidth(&u8g2, value_string.c_str()) -
                     MENU_PADDING),
@@ -131,11 +145,6 @@ extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
   u8g2_SetPowerSave(&u8g2, 0);
   ESP_LOGI(TAG, "Initialized U8G2 and Display");
 
-  // Setup the screen object
-  displayState.time_hours = 10;
-  displayState.time_minutes = 11;
-  displayState.time_seconds = 12;
-
   std::shared_ptr<menuListObject> firstOption =
       std::make_shared<menuListObject>();
   firstOption->text = "List item 1";
@@ -145,10 +154,27 @@ extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
   displayState.menuList[0] = firstOption;
   displayState.menuList[1] = firstOption;
   displayState.menuList[2] = firstOption;
+
+  displayState.iconList[0] = HAM_BRIDGE_ICON_mic;
+  displayState.iconList[1] = HAM_BRIDGE_ICON_lan_enable;
+  displayState.iconList[2] = HAM_BRIDGE_ICON_lan_disable;
+}
+
+void updateDisplayState() {
+  // Update current time
+  time_t now;
+  struct tm timeinfo;
+  time(&now);
+  localtime_r(&now, &timeinfo);
+
+  displayState.time_hours = timeinfo.tm_hour;
+  displayState.time_minutes = timeinfo.tm_min;
+  displayState.time_seconds = timeinfo.tm_sec;
 }
 
 extern "C" void screenRefreshTask() {
   while (1) {
+    updateDisplayState();
     drawScreen();
     vTaskDelay(pdMS_TO_TICKS(100));
   }
