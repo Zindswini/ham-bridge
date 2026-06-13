@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_netif_defaults.h"
+#include "esp_netif_ip_addr.h"
 #include "esp_netif_types.h"
 #include "ethernet_init.h"
 #include "freertos/FreeRTOS.h"
@@ -21,6 +22,7 @@ static const char *TAG = "ethernet_handler";
 static esp_eth_handle_t *s_eth_handles = nullptr;
 static uint8_t s_eth_port_cnt = 0;
 static SemaphoreHandle_t ip_got_sem;
+static esp_netif_t *eth_netif;
 
 static void gotIpEventHandler(void *arg, esp_event_base_t event_base,
                               int32_t event_id, void *event_data) {
@@ -50,7 +52,7 @@ void setupEthernet(void) {
   esp_netif_config.if_desc = "eth1";
   // esp_netif_config.route_prio -= 5;
 
-  esp_netif_t *eth_netif = esp_netif_new(&cfg_spi);
+  eth_netif = esp_netif_new(&cfg_spi);
   // Attach Ethernet Driver to TCP/IP Stack
   ESP_ERROR_CHECK(
       esp_netif_attach(eth_netif, esp_eth_new_netif_glue(s_eth_handles[0])));
@@ -63,4 +65,12 @@ void setupEthernet(void) {
   if (xSemaphoreTake(ip_got_sem, portMAX_DELAY) != pdTRUE) {
     ESP_LOGE(TAG, "Timeout waiting for ETH IP");
   }
+}
+
+void *getIpAddr(void) {
+  static char ip_str[16]; // "255.255.255.255\0"
+  esp_netif_ip_info_t ip_info;
+  esp_netif_get_ip_info(eth_netif, &ip_info);
+  snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
+  return ip_str;
 }

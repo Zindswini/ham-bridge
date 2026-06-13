@@ -1,6 +1,9 @@
 #include "screen_handler.h"
 
+#include "FreeRTOSConfig.h"
 #include "esp_log.h"
+#include "esp_netif.h"
+#include "ethernet_handler.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
@@ -10,14 +13,11 @@
 #include "u8g2_esp32_hal.h"
 #include "u8x8.h"
 #include <array>
-#include <cstddef>
 #include <ctime>
 #include <format>
 #include <memory>
-#include <mutex>
 #include <shared_mutex>
 #include <stdint.h>
-#include <stdio.h>
 #include <string>
 #include <sys/_timeval.h>
 #include <sys/time.h>
@@ -30,6 +30,7 @@ enum menu_item_type : uint8_t {
   MENU_ITEM_TYPE_TOGGLE = 1,
   MENU_ITEM_TYPE_SUBMENU = 2,
   MENU_ITEM_TYPE_BACK = 3,
+  MENU_ITEM_TYPE_STRING = 4,
 };
 
 struct menuListObject {
@@ -41,17 +42,17 @@ struct menuListObject {
   // If toggle, value is bool
   // if submenu, value is menuList
   // if back, value is menuList
-  const int32_t value = 0;
+  void *value = nullptr;
   const std::shared_ptr<std::array<std::shared_ptr<menuListObject>, 10>>
       menuListValue = nullptr;
 
   // Method called to get its value
-  const void *getterMethod = nullptr;
+  void *(*getterMethod)() = nullptr;
   // Whether the getter is called on refresh
   const bool poll = false;
 
   // If interactable, method called on confirm
-  const void *setterMethod = nullptr;
+  void (*setterMethod)() = nullptr;
 };
 
 struct screenInformation {
@@ -96,7 +97,7 @@ void drawMenuItem(u8g2_uint_t y, menuListObject *menuItem, bool active,
   case MENU_ITEM_TYPE_NUMERICAL:
     // Interpret value as uint32 and
     // Draw number as string on right side
-    value_string = std::format("{:d}", menuItem->value);
+    value_string = std::format("{:d}", (uint32_t)menuItem->value);
     u8g2_DrawStr(&u8g2,
                  (u8g2.width - MENU_PADDING - squish -
                   u8g2_GetStrWidth(&u8g2, value_string.c_str())),
@@ -116,6 +117,13 @@ void drawMenuItem(u8g2_uint_t y, menuListObject *menuItem, bool active,
                    (u8g2.width - MENU_PADDING - TEXT_HEIGHT - squish + 2),
                    y + MENU_PADDING + 2, TEXT_HEIGHT - 4, TEXT_HEIGHT - 4);
     }
+    break;
+  case MENU_ITEM_TYPE_STRING:
+    value_string = std::format("{}", (char *)menuItem->value);
+    u8g2_DrawStr(&u8g2,
+                 (u8g2.width - MENU_PADDING - squish -
+                  u8g2_GetStrWidth(&u8g2, value_string.c_str())),
+                 y + MENU_PADDING + TEXT_HEIGHT, value_string.c_str());
     break;
   case MENU_ITEM_TYPE_SUBMENU:
     u8g2_DrawXBM(&u8g2, (u8g2.width - MENU_PADDING - squish - ICON_WIDTH),
@@ -209,17 +217,17 @@ extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
   topLevelMenu->at(0) = std::make_shared<menuListObject>(menuListObject{
       .text = "Example",
       .item_type = MENU_ITEM_TYPE_NUMERICAL,
-      .value = 9999,
+      .value = (void *)9999,
   });
 
   topLevelMenu->at(1) = std::make_shared<menuListObject>(menuListObject{
       .text = "Example 2",
       .item_type = MENU_ITEM_TYPE_TOGGLE,
-      .value = (int32_t)true,
+      .value = (void *)true,
   });
 
   topLevelMenu->at(2) = std::make_shared<menuListObject>(menuListObject{
-      .text = "Submenu 1",
+      .text = "Debug Info",
       .item_type = MENU_ITEM_TYPE_SUBMENU,
       .menuListValue = debugStatMenu,
   });
@@ -230,19 +238,21 @@ extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
                      .item_type = MENU_ITEM_TYPE_BACK,
                      .menuListValue = topLevelMenu});
   debugStatMenu->at(1) = std::make_shared<menuListObject>(menuListObject{
-      .text = "Example",
-      .item_type = MENU_ITEM_TYPE_NUMERICAL,
-      .value = 9999,
+      .text = "IP Address",
+      .item_type = MENU_ITEM_TYPE_STRING,
+      .value = (void *)"Test",
+      .getterMethod = getIpAddr,
+      .poll = true,
   });
   debugStatMenu->at(2) = std::make_shared<menuListObject>(menuListObject{
       .text = "Example 2",
       .item_type = MENU_ITEM_TYPE_NUMERICAL,
-      .value = 9999,
+      .value = (void *)9999,
   });
   debugStatMenu->at(3) = std::make_shared<menuListObject>(menuListObject{
       .text = "Example 3",
       .item_type = MENU_ITEM_TYPE_NUMERICAL,
-      .value = 9999,
+      .value = (void *)9999,
   });
 
   displayState.menuList = topLevelMenu;
@@ -254,12 +264,25 @@ extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
 
 void updateDisplayState() {
   // Update current time
+  std::shared_lock lock(displayMutex);
   time_t now;
   struct tm timeinfo;
   time(&now);
   localtime_r(&now, &timeinfo);
 
   displayState.timeinfo = timeinfo;
+
+  // If nearby menu items have polling enabled,
+  // call their getter and update the value
+  if (displayState.menuIndex > 0) {
+    menuListObject *previous =
+        displayState.menuList.get()->at(displayState.menuIndex - 1).get();
+    if (previous != nullptr && previous->poll) {
+      previous->value = previous->getterMethod();
+    }
+  }
+
+  lock.release();
 }
 
 extern "C" void screenRefreshTask() {
@@ -270,7 +293,9 @@ extern "C" void screenRefreshTask() {
   }
 }
 extern "C" void processIncomingInput(button_types incomingButton) {
-  std::unique_lock lock(displayMutex);
+  // Make sure display won't draw on incomplete data
+  std::shared_lock lock(displayMutex);
+  // Handle up/increment button pressed
   switch (incomingButton) {
   case BUTTON_TYPE_INCREMENT:
     if (displayState.menuIndex < displayState.menuList->size() - 1 &&
@@ -278,14 +303,34 @@ extern "C" void processIncomingInput(button_types incomingButton) {
       displayState.menuIndex++;
     }
     break;
+
+  // Handle down/decrement button pressed
   case BUTTON_TYPE_DECREMENT:
     if (displayState.menuIndex > 0 &&
         displayState.menuList->at(displayState.menuIndex - 1) != nullptr) {
       displayState.menuIndex--;
     }
     break;
+
+    // Handle confirm button pressed
+    // Action depends on current menu object
   case BUTTON_TYPE_CONFIRM:
-    // displayState.menuIndex++;
+    menuListObject *activeMenuItem =
+        displayState.menuList->at(displayState.menuIndex).get();
+    switch (activeMenuItem->item_type) {
+    case MENU_ITEM_TYPE_NUMERICAL:
+    case MENU_ITEM_TYPE_TOGGLE:
+    case MENU_ITEM_TYPE_STRING:
+      break;
+
+    case MENU_ITEM_TYPE_SUBMENU:
+    case MENU_ITEM_TYPE_BACK:
+      if (activeMenuItem->menuListValue != nullptr) {
+        displayState.menuList = activeMenuItem->menuListValue;
+        displayState.menuIndex = 0;
+      }
+      break;
+    }
     break;
   }
   lock.release();

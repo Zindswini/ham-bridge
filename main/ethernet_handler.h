@@ -6,9 +6,10 @@ extern "C" {
 #endif
 
 void setupEthernet(void);
+void *getIpAddr(void);
 
 #ifdef __cplusplus
-{
+}
 #endif
 
 #endif // ETHERNET_HANDLER_H
