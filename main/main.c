@@ -4,15 +4,12 @@
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
 #include "esp_system.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/projdefs.h"
-#include "freertos/task.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/projdefs.h>
+#include <freertos/task.h>
 #include <inttypes.h>
 #include <stdlib.h>
 #include <time.h>
-
-// U8G2 OLED Graphics Library
-#include "u8g2.h"
 
 // Other ham_bridge components
 #include "config.h"
@@ -127,7 +124,7 @@ void app_main(void) {
   ESP_LOGI(TAG, "Created Screen Refresh Task");
 
   while (1) {
-    char *outBuf;
+    char *outBuf = nullptr;
     outBuf = malloc(sizeof(char) * 2048);
     vTaskList(outBuf);
     ESP_LOGI(TAG, outBuf);

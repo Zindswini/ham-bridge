@@ -5,12 +5,10 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
 #include "hal/gpio_types.h"
 #include "screen_handler.h"
-#include <math.h>
-#include <string.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 
 static const char *TAG = "INPUT_HANDLER";
 
@@ -34,7 +32,7 @@ static void IRAM_ATTR buttonPollingISR(void *args) {
       gpio_get_level(DECREMENT_BUTTON_PIN) != 0;
 
   if (!previous_button_state.confirm_button_state &&
-      current_button_state.confirm_button_state) {
+      (int)current_button_state.confirm_button_state) {
     BaseType_t hp_task_woken = pdFALSE;
     button_types button_type = BUTTON_TYPE_CONFIRM;
     xQueueSendToBackFromISR(input_queue, &button_type, &hp_task_woken);
@@ -44,7 +42,7 @@ static void IRAM_ATTR buttonPollingISR(void *args) {
   }
 
   if (!previous_button_state.increment_button_state &&
-      current_button_state.increment_button_state) {
+      (int)current_button_state.increment_button_state) {
     BaseType_t hp_task_woken = pdFALSE;
     button_types button_type = BUTTON_TYPE_INCREMENT;
     xQueueSendToBackFromISR(input_queue, &button_type, &hp_task_woken);
@@ -54,7 +52,7 @@ static void IRAM_ATTR buttonPollingISR(void *args) {
   }
 
   if (!previous_button_state.decrement_button_state &&
-      current_button_state.decrement_button_state) {
+      (int)current_button_state.decrement_button_state) {
     BaseType_t hp_task_woken = pdFALSE;
     button_types button_type = BUTTON_TYPE_DECREMENT;
     xQueueSendToBackFromISR(input_queue, &button_type, &hp_task_woken);
