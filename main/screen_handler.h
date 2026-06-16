@@ -13,7 +13,7 @@
 #define ICON_HEIGHT 12
 #define MENU_FRAME_HEIGHT (TEXT_HEIGHT + (2 * MENU_PADDING))
 // how many pixels the inactive menu elements are squished by:
-#define MENU_INACTIVE_SQUISH 16
+#define MENU_INACTIVE_SQUISH 10
 
 #ifdef __cplusplus
 extern "C" {

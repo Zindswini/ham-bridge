@@ -274,11 +274,27 @@ void updateDisplayState() {
 
   // If nearby menu items have polling enabled,
   // call their getter and update the value
+  menuListObject *objectToDraw;
+  // Update top slot
   if (displayState.menuIndex > 0) {
-    menuListObject *previous =
+    objectToDraw =
         displayState.menuList.get()->at(displayState.menuIndex - 1).get();
-    if (previous != nullptr && previous->poll) {
-      previous->value = previous->getterMethod();
+    if (objectToDraw != nullptr && objectToDraw->poll) {
+      objectToDraw->value = objectToDraw->getterMethod();
+    }
+  }
+  // Update selected item (center slot)
+  objectToDraw = displayState.menuList.get()->at(displayState.menuIndex).get();
+  if (objectToDraw != nullptr && objectToDraw->poll) {
+    objectToDraw->value = objectToDraw->getterMethod();
+  }
+
+  // Update bottom slot
+  if (displayState.menuIndex < displayState.menuList->size() - 1) {
+    objectToDraw =
+        displayState.menuList.get()->at(displayState.menuIndex + 1).get();
+    if (objectToDraw != nullptr && objectToDraw->poll) {
+      objectToDraw->value = objectToDraw->getterMethod();
     }
   }
 

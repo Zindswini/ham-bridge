@@ -132,6 +132,6 @@ void app_main(void) {
     vTaskList(outBuf);
     ESP_LOGI(TAG, outBuf);
     free(outBuf);
-    vTaskDelay(5000);
+    vTaskDelay(10000);
   }
 }
