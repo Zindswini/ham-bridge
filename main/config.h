@@ -24,4 +24,7 @@
 #define CONFIRM_BUTTON_PIN 38
 #define DEBOUNCE_DELAY_MS 50
 
+// HTTPS Server Settings
+#define MAX_HTTPS_CLIENTS 4
+
 #endif
