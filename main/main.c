@@ -1,5 +1,7 @@
 #include "driver/i2c_master.h"
 #include "esp_chip_info.h"
+#include "esp_err.h"
+#include "esp_event.h"
 #include "esp_flash.h"
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
@@ -14,8 +16,10 @@
 // Other ham_bridge components
 #include "config.h"
 #include "ethernet_handler.h"
+#include "http_server.h"
 #include "i2s_handler.h"
 #include "input_handler.h"
+#include "nvs_flash.h"
 #include "screen_handler.h"
 
 static const char *TAG = "MAIN";
@@ -82,6 +86,12 @@ void app_main(void) {
   initializeU8G2(&i2c_bus_handle);
   ESP_LOGI(TAG, "Initialized U8G2 Display Structure");
 
+  ESP_LOGI(TAG, "Initializing NVS Flash");
+  drawLoadingScreen("Initializing NVS Flash");
+  ESP_ERROR_CHECK(nvs_flash_init());
+  ESP_ERROR_CHECK(esp_event_loop_create_default());
+  ESP_LOGI(TAG, "Initialized NVS Flash");
+
   ESP_LOGI(TAG, "Initializing I2S Driver");
   drawLoadingScreen("Initializing I2S Driver");
   i2sDriverInit();
@@ -99,7 +109,7 @@ void app_main(void) {
 
   // Set timezone
   ESP_LOGI(TAG, "Configuring NTP & TZ");
-  drawLoadingScreen("Configuring NTP\nand Time Zone");
+  drawLoadingScreen("Configuring NTP");
   esp_sntp_config_t sntp_config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
   esp_netif_sntp_init(&sntp_config);
   setenv("TZ", "UTC", 1);
@@ -122,6 +132,11 @@ void app_main(void) {
   xTaskCreate((TaskFunction_t)screenRefreshTask, "screen_refresh", 4096, NULL,
               8, nullptr);
   ESP_LOGI(TAG, "Created Screen Refresh Task");
+
+  ESP_LOGI(TAG, "Starting Web Server Task");
+  xTaskCreate((TaskFunction_t)wssServerTask, "wss_web_server", 4096, NULL, 8,
+              nullptr);
+  ESP_LOGI(TAG, "Created Web Server Task");
 
   while (1) {
     char *outBuf = nullptr;
