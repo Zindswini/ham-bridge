@@ -1,3 +1,5 @@
+#include "http_server.h"
+
 #include "esp_err.h"
 #include "esp_eth_com.h"
 #include "esp_event.h"
@@ -8,7 +10,6 @@
 #include "mbedtls/x509.h"
 #include "mbedtls/x509_crt.h"
 #include "nvs.h"
-#include "nvs_flash.h"
 #include "psa/crypto.h"
 #include <array>
 #include <cstddef>
@@ -21,7 +22,6 @@
 #include <esp_system.h>
 #include <memory>
 #include <nvs_flash.h>
-#include <stdint.h>
 #include <sys/cdefs.h>
 #include <vector>
 
@@ -29,24 +29,36 @@
 #include "esp_netif_types.h"
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
+#include "psa/crypto_sizes.h"
 #include "psa/crypto_struct.h"
 #include "psa/crypto_types.h"
 #include "psa/crypto_values.h"
 #include "wss_keep_alive.h"
 
+// Implementation Reference:
+// https://github.com/espressif/esp-idf/blob/v6.0.1/examples/protocols/https_server/wss_server/main/wss_server_example.c
+
 static const char *TAG = "HTTPS_WSS_SERVER";
 
+struct AsyncRespArg {
+  httpd_handle_t hd;
+  int fd;
+};
+
+struct KeyCertBundle {
+  std::vector<uint8_t> key;
+  std::vector<uint8_t> cert;
+};
+
 static httpd_handle_t server = nullptr;
+static KeyCertBundle bundle;
 
 #define KEY_BITS 2048
 #define NVS_CERT_NAMESPACE "tls_store"
 #define NVS_TLS_CERT_KEY "cert_val"
 #define NVS_TLS_KEY_KEY "key_val"
 
-// Implementation Reference:
-// https://github.com/espressif/esp-idf/blob/v6.0.1/examples/protocols/https_server/wss_server/main/wss_server_example.c
-
-auto generateCert() -> esp_err_t {
+extern "C" esp_err_t generateNewKeyCertBundle() {
   // Use psa library to generate the key
   psa_key_attributes_t key_attr = PSA_KEY_ATTRIBUTES_INIT;
   // psa_set_key_type(&key_attr,
@@ -56,10 +68,10 @@ auto generateCert() -> esp_err_t {
   psa_set_key_usage_flags(&key_attr, PSA_KEY_USAGE_SIGN_HASH |
                                          PSA_KEY_USAGE_VERIFY_HASH |
                                          PSA_KEY_USAGE_EXPORT);
-  // psa_set_key_algorithm(&key_attr, PSA_ALG_SHA_256);
+  // psa_set_key_algorithm(&key_attr, PSA_ALG_ECDSA(PSA_ALG_SHA_256));
   psa_set_key_algorithm(&key_attr, PSA_ALG_RSA_PKCS1V15_SIGN(PSA_ALG_SHA_256));
 
-  psa_key_id_t key_id;
+  psa_key_id_t key_id = 0;
 
   ESP_LOGI(TAG, "Generating key...");
   // Takes about 2m for 4096 bit RSA key
@@ -82,11 +94,22 @@ auto generateCert() -> esp_err_t {
   }
 
   // Export key as PEM
-  // Sizes chosen arbitrarily, TODO(Zindswini): Look more into it
-  std::vector<uint8_t> key_buf(5120);
-  std::vector<uint8_t> crt_buf(5120);
+  std::vector<uint8_t> key_buf(
+      PSA_EXPORT_KEY_OUTPUT_SIZE(PSA_KEY_TYPE_RSA_KEY_PAIR, KEY_BITS));
 
-  uint8_t serial[] = {0x01}; // TODO(Zindswini): Check on this
+  // Should be safe size. mbedtls_x509write_crt_der will return
+  // MBEDTLS_ERR_X509_BUFFER_TOO_SMALL (negative) if too small
+  std::vector<uint8_t> crt_buf(4096);
+
+  // Generate random value for serial field
+  std::array<uint8_t, 16> serial;
+  ret = psa_generate_random(serial.data(), serial.size());
+  if (ret != 0) {
+    ESP_LOGE(TAG,
+             "Failed to generate random serial field for x509 certificate");
+    return ESP_ERR_INVALID_STATE;
+  }
+  serial.at(0) = (serial.at(0) & 0x07F) | 0x01; // Ensure nonzero leading byte
 
   mbedtls_x509write_cert crt;
   mbedtls_x509write_crt_init(&crt);
@@ -99,13 +122,11 @@ auto generateCert() -> esp_err_t {
                                          "CN=ham-bridge,O=ham-bridge,C=US");
   mbedtls_x509write_crt_set_issuer_name(&crt,
                                         "CN=ham-bridge,O=ham-bridge,C=US");
-  mbedtls_x509write_crt_set_serial_raw(&crt, serial, sizeof(serial));
+  mbedtls_x509write_crt_set_serial_raw(&crt, serial.data(), serial.size());
   mbedtls_x509write_crt_set_validity(&crt, "20260101000000", "20270101000000");
   mbedtls_x509write_crt_set_basic_constraints(&crt, 0, -1);
 
-  mbedtls_x509write_crt_set_key_usage(&crt,
-                                      MBEDTLS_X509_KU_DIGITAL_SIGNATURE |
-                                          MBEDTLS_X509_KU_KEY_ENCIPHERMENT);
+  mbedtls_x509write_crt_set_key_usage(&crt, MBEDTLS_X509_KU_DIGITAL_SIGNATURE);
 
   // Write Key DER
   int key_der_written =
@@ -124,6 +145,7 @@ auto generateCert() -> esp_err_t {
       mbedtls_x509write_crt_der(&crt, crt_buf.data(), crt_buf.size());
   if (crt_der_written <= 0) {
     ESP_LOGE(TAG, "Failed to write cert DER to buffer!");
+    psa_destroy_key(key_id);
     mbedtls_pk_free(&pk_ctx);
     mbedtls_x509write_crt_free(&crt);
     return ESP_ERR_INVALID_STATE;
@@ -134,11 +156,13 @@ auto generateCert() -> esp_err_t {
 
   // Store key and cert to nvs
 
-  psa_destroy_key(key_id); // Destroy after export
+  // Free memory after exporting to buffer
+  psa_destroy_key(key_id);
   mbedtls_pk_free(&pk_ctx);
   mbedtls_x509write_crt_free(&crt);
 
   // Try writing to nvs
+  ESP_LOGI(TAG, "Writing key and cert to NVS");
   nvs_handle_t nvs_h = 0;
 
   esp_err_t err = nvs_open(NVS_CERT_NAMESPACE, NVS_READWRITE, &nvs_h);
@@ -169,15 +193,69 @@ auto generateCert() -> esp_err_t {
     nvs_close(nvs_h);
     return err;
   }
+  ESP_LOGI(TAG, "Wrote key and cert to NVS");
+
+  nvs_close(nvs_h);
+
+  ESP_LOGI(TAG, "Writing key and cert to global bundle object");
+  bundle.key = key_buf;
+  bundle.cert = crt_buf;
+  ESP_LOGI(TAG, "Wrote key and cert to global bundle object");
+
+  return ESP_OK;
+}
+
+extern "C" esp_err_t getKeyCertBundleFromNvs() {
+  // Get a handle to NVS
+  nvs_handle_t nvs_h = 0;
+  esp_err_t err = nvs_open(NVS_CERT_NAMESPACE, NVS_READONLY, &nvs_h);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to open NVS namespace");
+    return err;
+  }
+
+  // Pass nullptr to get_blob to get size of objects
+  size_t nvs_key_size = 0;
+  size_t nvs_crt_size = 0;
+  err = nvs_get_blob(nvs_h, NVS_TLS_KEY_KEY, nullptr, &nvs_key_size);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to get length of key in NVS");
+    nvs_close(nvs_h);
+    return err;
+  }
+  err = nvs_get_blob(nvs_h, NVS_TLS_CERT_KEY, nullptr, &nvs_crt_size);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to get length of cert in NVS");
+    nvs_close(nvs_h);
+    return err;
+  }
+
+  // If sizes > 0, certs already written
+  if (nvs_key_size > 0 && nvs_crt_size > 0) {
+    bundle.key.resize(nvs_key_size);
+    bundle.cert.resize(nvs_crt_size);
+    err =
+        nvs_get_blob(nvs_h, NVS_TLS_KEY_KEY, bundle.key.data(), &nvs_key_size);
+    if (err != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to get read key from NVS to vector");
+      nvs_close(nvs_h);
+      return err;
+    }
+    err = nvs_get_blob(nvs_h, NVS_TLS_CERT_KEY, bundle.cert.data(),
+                       &nvs_crt_size);
+    if (err != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to get read cert from NVS to vector");
+      nvs_close(nvs_h);
+      return err;
+    }
+  } else {
+    bundle.key.clear();
+    bundle.cert.clear();
+  }
 
   nvs_close(nvs_h);
   return ESP_OK;
 }
-
-struct async_resp_arg {
-  httpd_handle_t hd;
-  int fd;
-};
 
 static auto wsHandler(httpd_req_t *req) -> esp_err_t {
   if (req->method == HTTP_GET) {
@@ -285,7 +363,7 @@ static const httpd_uri_t kWsUriConf = {
 
 static void sendHello(void *arg) {
   static const char *data = "Hello client!";
-  auto *resp_arg = static_cast<async_resp_arg *>(arg);
+  auto *resp_arg = static_cast<AsyncRespArg *>(arg);
 
   httpd_handle_t httpd_handle = resp_arg->hd;
   int file_desc = resp_arg->fd;
@@ -301,7 +379,7 @@ static void sendHello(void *arg) {
 }
 
 static void sendPing(void *arg) {
-  auto *resp_arg = static_cast<async_resp_arg *>(arg);
+  auto *resp_arg = static_cast<AsyncRespArg *>(arg);
 
   httpd_handle_t httpd_handle = resp_arg->hd;
   int file_desc = resp_arg->fd;
@@ -333,7 +411,7 @@ auto checkClientAliveCallback(wss_keep_alive_t keep_alive_handle, int file_desc)
   ESP_LOGD(TAG, "Checking if client (fd=%d) is alive", file_desc);
 
   auto *resp_arg =
-      static_cast<async_resp_arg *>(malloc(sizeof(struct async_resp_arg)));
+      static_cast<AsyncRespArg *>(malloc(sizeof(struct AsyncRespArg)));
   if (resp_arg == nullptr) {
     ESP_LOGE(TAG, "Failed to allocate memory for wss healthcheck on fd %d",
              file_desc);
@@ -355,6 +433,7 @@ static void startWssEchoServer() {
   wss_keep_alive_t keep_alive = wss_keep_alive_start(&keep_alive_config);
 
   ESP_LOGI(TAG, "Starting HTTPS Websocket Server");
+  esp_err_t ret;
 
   httpd_ssl_config_t conf = HTTPD_SSL_CONFIG_DEFAULT();
   conf.httpd.max_open_sockets = MAX_HTTPS_CLIENTS;
@@ -362,54 +441,28 @@ static void startWssEchoServer() {
   conf.httpd.open_fn = wssOpenFd;
   conf.httpd.close_fn = wssCloseFd;
 
-  // Try to get certs out of NVS
-  nvs_handle_t nvs_h;
-  esp_err_t err = nvs_open(NVS_CERT_NAMESPACE, NVS_READONLY, &nvs_h);
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to open NVS namespace");
+  // Read key and cert from global bundle
+  ret = getKeyCertBundleFromNvs();
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to get KeyCert bundle from NVS!");
     return;
   }
-
-  size_t nvs_key_size = 0;
-  size_t nvs_crt_size = 0;
-  err = nvs_get_blob(nvs_h, NVS_TLS_KEY_KEY, nullptr, &nvs_key_size);
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to get length of key in NVS");
-    nvs_close(nvs_h);
-    return;
-  }
-  err = nvs_get_blob(nvs_h, NVS_TLS_CERT_KEY, nullptr, &nvs_crt_size);
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to get length of cert in NVS");
-    nvs_close(nvs_h);
-    return;
-  }
-
-  std::vector<uint8_t> nvs_key;
-  std::vector<uint8_t> nvs_crt;
-  // If sizes > 0, certs already written
-  if (nvs_key_size > 0 && nvs_crt_size > 0) {
-    err = nvs_get_blob(nvs_h, NVS_TLS_KEY_KEY, nullptr, &nvs_key_size);
-    if (err != ESP_OK) {
-      ESP_LOGE(TAG, "Failed to get length of key in NVS");
-      nvs_close(nvs_h);
+  if (bundle.key.size() == 0 || bundle.cert.size() == 0) {
+    ESP_LOGI(TAG, "No cert bundle found, generating new!");
+    ret = generateNewKeyCertBundle();
+    if (ret != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to generate new KeyCert bundle!");
       return;
     }
-    err = nvs_get_blob(nvs_h, NVS_TLS_CERT_KEY, nullptr, &nvs_crt_size);
-    if (err != ESP_OK) {
-      ESP_LOGE(TAG, "Failed to get length of cert in NVS");
-      nvs_close(nvs_h);
-      return;
-    }
+  } else {
+    ESP_LOGI(TAG, "Read KeyCert bundle from NVS");
   }
-  // If not, bail (for now) TODO(Zindswini): Generate and Retry
+  conf.servercert = bundle.cert.data();
+  conf.servercert_len = bundle.cert.size();
+  conf.prvtkey_pem = bundle.key.data();
+  conf.prvtkey_len = bundle.key.size();
 
-  // conf.servercert =
-  // conf.servercert_len =
-  // conf.prvtkey_pem =
-  // conf.prvtkey_len =
-
-  esp_err_t ret = httpd_ssl_start(&server, &conf);
+  ret = httpd_ssl_start(&server, &conf);
   if (ret != ESP_OK) {
     ESP_LOGE(TAG, "Error starting httpd ssl server: %d", ret);
     return;
@@ -474,7 +527,7 @@ static void wssServerSendMessages() {
         int sock = client_fds.at(i);
         if (httpd_ws_get_fd_info(server, sock) == HTTPD_WS_CLIENT_WEBSOCKET) {
           ESP_LOGI(TAG, "Active client: fd=%d -> sending async message", sock);
-          auto resp_arg = std::shared_ptr<async_resp_arg>();
+          auto resp_arg = std::shared_ptr<AsyncRespArg>();
           assert(resp_arg != nullptr);
           resp_arg->hd = server;
           resp_arg->fd = sock;
@@ -495,7 +548,7 @@ static void wssServerSendMessages() {
 
 extern "C" void wssServerTask() {
   psa_crypto_init();
-  generateCert();
+
   ESP_LOGI(TAG, "Registering connect/disconnect handlers");
   // Register server start/stop functions
   ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP,
