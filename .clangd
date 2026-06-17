@@ -14,6 +14,10 @@ Diagnostics:
       - cppcoreguidelines-avoid-non-const-global-variables
       - cppcoreguidelines-avoid-magic-numbers
       - readability-magic-numbers
+      - cppcoreguidelines-avoid-do-while
+      - cppcoreguidelines-pro-type-vararg
+      - cppcoreguidelines-pro-type-union-access
+      - readability-math-missing-parentheses
       
     CheckOptions:
       readability-identifier-naming.ClassCase: CamelCase
@@ -24,7 +28,6 @@ Diagnostics:
       readability-identifier-naming.EnumConstantCase: CamelCase
       readability-identifier-naming.EnumConstantPrefix: k
       readability-identifier-naming.FunctionCase: camelBack
-      readability-identifier-naming.FunctionCase: CamelCase
       readability-identifier-naming.GlobalConstantCase: CamelCase
       readability-identifier-naming.GlobalConstantPrefix: k
       readability-identifier-naming.IgnoreMainLikeFunctions: 1
