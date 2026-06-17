@@ -11,16 +11,17 @@
 
 #include "wss_keep_alive.h"
 #include "esp_timer.h"
-// #include <cstddef>
+#include <cstddef>
+#include <cstdint>
 #include <esp_log.h>
 #include <esp_system.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
-#include <stddef.h>
-#include <stdint.h>
+#include <memory>
+#include <vector>
 
-typedef enum {
+typedef enum : uint8_t {
   kNoClient = 0,
   kClientFdAdd,
   kClientFdRemove,
@@ -43,7 +44,7 @@ typedef struct wss_keep_alive_storage {
   size_t not_alive_after_ms;
   void *user_ctx;
   QueueHandle_t q;
-  client_fd_action_t clients[];
+  std::vector<client_fd_action_t> clients;
 } wss_keep_alive_storage_t;
 
 typedef struct wss_keep_alive_storage *wss_keep_alive_t;
@@ -107,7 +108,7 @@ static bool addNewClient(wss_keep_alive_t keep_alive_handle, int sockfd) {
 }
 
 static void keepAliveTask(void *arg) {
-  wss_keep_alive_storage_t *keep_alive_storage = arg;
+  auto *keep_alive_storage = static_cast<wss_keep_alive_storage_t *>(arg);
   bool run_task = true;
   client_fd_action_t client_action;
   while (run_task) {
@@ -194,14 +195,18 @@ wss_keep_alive_t wssKeepAliveStart(wss_keep_alive_config_t *config) {
 }
 
 void wssKeepAliveStop(wss_keep_alive_t keep_alive_handle) {
-  client_fd_action_t stop = {.type = kStopTask};
+  client_fd_action_t stop = {.type = kStopTask, .fd = -1, .last_seen = 0};
   xQueueSendToBack(keep_alive_handle->q, &stop, 0);
   // internal structs will be de-allocated in the task
 }
 
 esp_err_t wssKeepAliveAddClient(wss_keep_alive_t keep_alive_handle,
                                 int file_desc) {
-  client_fd_action_t client_fd_action = {.fd = file_desc, .type = kClientFdAdd};
+  client_fd_action_t client_fd_action = {
+      .type = kClientFdAdd,
+      .fd = file_desc,
+      .last_seen = tickGetMs(),
+  };
   if (xQueueSendToBack(keep_alive_handle->q, &client_fd_action, 0) == pdTRUE) {
     return ESP_OK;
   }
@@ -210,8 +215,8 @@ esp_err_t wssKeepAliveAddClient(wss_keep_alive_t keep_alive_handle,
 
 esp_err_t wssKeepAliveRemoveClient(wss_keep_alive_t keep_alive_handle,
                                    int file_desc) {
-  client_fd_action_t client_fd_action = {.fd = file_desc,
-                                         .type = kClientFdRemove};
+  client_fd_action_t client_fd_action = {
+      .type = kClientFdRemove, .fd = file_desc, .last_seen = tickGetMs()};
   if (xQueueSendToBack(keep_alive_handle->q, &client_fd_action, 0) == pdTRUE) {
     return ESP_OK;
   }
@@ -221,7 +226,7 @@ esp_err_t wssKeepAliveRemoveClient(wss_keep_alive_t keep_alive_handle,
 esp_err_t wssKeepAliveClientIsActive(wss_keep_alive_t keep_alive_handle,
                                      int file_desc) {
   client_fd_action_t client_fd_action = {
-      .fd = file_desc, .type = kClientUpdate, .last_seen = tickGetMs()};
+      .type = kClientUpdate, .fd = file_desc, .last_seen = tickGetMs()};
   if (xQueueSendToBack(keep_alive_handle->q, &client_fd_action, 0) == pdTRUE) {
     return ESP_OK;
   }
