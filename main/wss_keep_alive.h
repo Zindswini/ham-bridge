@@ -27,8 +27,10 @@
 
 struct wss_keep_alive_storage;
 typedef struct wss_keep_alive_storage *wss_keep_alive_t;
-typedef bool (*wss_check_client_alive_cb_t)(wss_keep_alive_t h, int fd);
-typedef bool (*wss_client_not_alive_cb_t)(wss_keep_alive_t h, int fd);
+typedef bool (*wss_check_client_alive_cb_t)(wss_keep_alive_t keep_alive_handle,
+                                            int file_desc);
+typedef bool (*wss_client_not_alive_cb_t)(wss_keep_alive_t keep_alive_handle,
+                                          int file_desc);
 
 /**
  * @brief Confiuration struct
@@ -59,7 +61,8 @@ extern "C" {
  * @param fd socket file descriptor for this client
  * @return ESP_OK on success
  */
-esp_err_t wss_keep_alive_add_client(wss_keep_alive_t h, int fd);
+esp_err_t wssKeepAliveAddClient(wss_keep_alive_t keep_alive_handle,
+                                int file_desc);
 
 /**
  * @brief Removes this client from the set
@@ -68,7 +71,8 @@ esp_err_t wss_keep_alive_add_client(wss_keep_alive_t h, int fd);
  * @param fd socket file descriptor for this client
  * @return ESP_OK on success
  */
-esp_err_t wss_keep_alive_remove_client(wss_keep_alive_t h, int fd);
+esp_err_t wssKeepAliveRemoveClient(wss_keep_alive_t keep_alive_handle,
+                                   int file_desc);
 
 /**
  * @brief Notify that this client is alive
@@ -78,7 +82,8 @@ esp_err_t wss_keep_alive_remove_client(wss_keep_alive_t h, int fd);
  * @return ESP_OK on success
  */
 
-esp_err_t wss_keep_alive_client_is_active(wss_keep_alive_t h, int fd);
+esp_err_t wssKeepAliveClientIsActive(wss_keep_alive_t keep_alive_handle,
+                                     int file_desc);
 
 /**
  * @brief Starts keep-alive engine
@@ -86,14 +91,14 @@ esp_err_t wss_keep_alive_client_is_active(wss_keep_alive_t h, int fd);
  * @param config keep-alive configuration
  * @return keep alive handle
  */
-wss_keep_alive_t wss_keep_alive_start(wss_keep_alive_config_t *config);
+wss_keep_alive_t wssKeepAliveStart(wss_keep_alive_config_t *config);
 
 /**
  * @brief Stops keep-alive engine
  *
  * @param h keep-alive handle
  */
-void wss_keep_alive_stop(wss_keep_alive_t h);
+void wssKeepAliveStop(wss_keep_alive_t keep_alive_handle);
 
 /**
  * @brief Sets user defined context
@@ -101,7 +106,7 @@ void wss_keep_alive_stop(wss_keep_alive_t h);
  * @param h keep-alive handle
  * @param ctx user context
  */
-void wss_keep_alive_set_user_ctx(wss_keep_alive_t h, void *ctx);
+void wssKeepAliveSetUserCtx(wss_keep_alive_t keep_alive_handle, void *ctx);
 
 /**
  * @brief Gets user defined context
@@ -109,7 +114,7 @@ void wss_keep_alive_set_user_ctx(wss_keep_alive_t h, void *ctx);
  * @param h keep-alive handle
  * @return ctx user context
  */
-void *wss_keep_alive_get_user_ctx(wss_keep_alive_t h);
+void *wssKeepAliveGetUserCtx(wss_keep_alive_t keep_alive_handle);
 
 #ifdef __cplusplus
 }

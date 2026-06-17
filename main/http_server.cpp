@@ -74,7 +74,7 @@ static esp_err_t wsHandler(httpd_req_t *req) {
   if (ws_pkt.type == HTTPD_WS_TYPE_PONG) {
     ESP_LOGD(tag, "Received PONG message");
     free(buf);
-    return wss_keep_alive_client_is_active(
+    return wssKeepAliveClientIsActive(
         static_cast<wss_keep_alive_t>(httpd_get_global_user_ctx(req->handle)),
         httpd_req_to_sockfd(req));
   }
@@ -112,7 +112,7 @@ esp_err_t wssOpenFd(httpd_handle_t httpd_handle, int sockfd) {
 
   auto *keep_alive_inst =
       static_cast<wss_keep_alive_t>(httpd_get_global_user_ctx(httpd_handle));
-  return wss_keep_alive_add_client(keep_alive_inst, sockfd);
+  return wssKeepAliveAddClient(keep_alive_inst, sockfd);
 }
 
 void wssCloseFd(httpd_handle_t httpd_handle, int sockfd) {
@@ -120,7 +120,7 @@ void wssCloseFd(httpd_handle_t httpd_handle, int sockfd) {
 
   auto *keep_alive_inst =
       static_cast<wss_keep_alive_t>(httpd_get_global_user_ctx(httpd_handle));
-  wss_keep_alive_remove_client(keep_alive_inst, sockfd);
+  wssKeepAliveRemoveClient(keep_alive_inst, sockfd);
   fclose((FILE *)sockfd);
 }
 
@@ -170,7 +170,7 @@ static void sendPing(void *arg) {
 bool clientNotAliveCallback(wss_keep_alive_t keep_alive_handle, int file_desc) {
   ESP_LOGE(tag, "Client not alive, closing fd %d", file_desc);
   esp_err_t ret = httpd_sess_trigger_close(
-      wss_keep_alive_get_user_ctx(keep_alive_handle), file_desc);
+      wssKeepAliveGetUserCtx(keep_alive_handle), file_desc);
   if (ret != ESP_OK) {
     ESP_LOGE(tag, "Failed to close wss fd %d", file_desc);
     return false;
@@ -189,7 +189,7 @@ bool checkClientAliveCallback(wss_keep_alive_t keep_alive_handle,
              file_desc);
     assert(resp_arg != nullptr);
   }
-  resp_arg->hd = wss_keep_alive_get_user_ctx(keep_alive_handle);
+  resp_arg->hd = wssKeepAliveGetUserCtx(keep_alive_handle);
   resp_arg->fd = file_desc;
 
   return httpd_queue_work(resp_arg->hd, sendPing, resp_arg) == ESP_OK;
@@ -202,7 +202,7 @@ static void startWssEchoServer() {
   keep_alive_config.client_not_alive_cb = clientNotAliveCallback;
   keep_alive_config.check_client_alive_cb = checkClientAliveCallback;
 
-  wss_keep_alive_t keep_alive = wss_keep_alive_start(&keep_alive_config);
+  wss_keep_alive_t keep_alive = wssKeepAliveStart(&keep_alive_config);
 
   ESP_LOGI(tag, "Starting HTTPS Websocket Server");
   esp_err_t ret = 0;
@@ -225,11 +225,11 @@ static void startWssEchoServer() {
 
   ESP_LOGI(tag, "Registering URI Handlers");
   httpd_register_uri_handler(server, &kWsUriConf);
-  wss_keep_alive_set_user_ctx(keep_alive, server);
+  wssKeepAliveSetUserCtx(keep_alive, server);
 }
 
 static esp_err_t stopWssEchoServer() {
-  wss_keep_alive_stop(
+  wssKeepAliveStop(
       static_cast<wss_keep_alive_t>(httpd_get_global_user_ctx(server)));
   return httpd_ssl_stop(server);
 }
