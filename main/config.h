@@ -27,4 +27,10 @@
 // HTTPS Server Settings
 #define MAX_HTTPS_CLIENTS 4
 
+// TLS Certificate Settings
+#define KEY_BITS 2048
+#define NVS_CERT_NAMESPACE "tls_store"
+#define NVS_TLS_CERT_KEY "cert_val"
+#define NVS_TLS_KEY_KEY "key_val"
+
 #endif
