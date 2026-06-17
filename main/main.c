@@ -134,7 +134,7 @@ void app_main(void) {
   ESP_LOGI(TAG, "Created Screen Refresh Task");
 
   ESP_LOGI(TAG, "Starting Web Server Task");
-  xTaskCreate((TaskFunction_t)wssServerTask, "wss_web_server", 4096, NULL, 8,
+  xTaskCreate((TaskFunction_t)wssServerTask, "wss_web_server", 8192, NULL, 8,
               nullptr);
   ESP_LOGI(TAG, "Created Web Server Task");
 
