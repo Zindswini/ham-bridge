@@ -2,6 +2,7 @@ CompileFlags:
     Remove: [-f*, -m*]
     Add: [-Wextra, -Wall]
 Diagnostics:
+  UnusedIncludes: Strict
   ClangTidy:
     Add:
       - google-*
@@ -10,14 +11,16 @@ Diagnostics:
       - cppcoreguidelines-*
       - performance-*
     Remove:
-      - readability-function-cognitive-complexity
-      - cppcoreguidelines-avoid-non-const-global-variables
-      - cppcoreguidelines-avoid-magic-numbers
-      - readability-magic-numbers
       - cppcoreguidelines-avoid-do-while
-      - cppcoreguidelines-pro-type-vararg
+      - cppcoreguidelines-avoid-magic-numbers
+      - cppcoreguidelines-avoid-non-const-global-variables
       - cppcoreguidelines-pro-type-union-access
+      - cppcoreguidelines-pro-type-vararg
+      - modernize-use-trailing-return-type
+      - readability-function-cognitive-complexity
+      - readability-magic-numbers
       - readability-math-missing-parentheses
+      - modernize-use-using
       
     CheckOptions:
       readability-identifier-naming.ClassCase: CamelCase
@@ -45,7 +48,7 @@ Diagnostics:
       readability-identifier-naming.StaticConstantPrefix: k
       readability-identifier-naming.StaticVariableCase: lower_case
       readability-identifier-naming.TypeAliasCase: CamelCase
-      readability-identifier-naming.TypedefCase: CamelCase
+      readability-identifier-naming.TypedefCase: lower_case
       readability-identifier-naming.VariableCase: lower_case
 
   # Suppress:

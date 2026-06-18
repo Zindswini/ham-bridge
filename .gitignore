@@ -73,3 +73,9 @@ fp-info-cache
 *.xml
 # *.csv
 
+# Python
+*/venv
+*/.venv
+
+# Certificates
+*.pem
