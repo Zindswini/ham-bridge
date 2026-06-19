@@ -236,7 +236,8 @@ static void wssServerSendMessages() {
           ESP_LOGI(tag, "Websocket client: fd=%d -> sending async message",
                    sock);
 
-          auto resp_arg = std::unique_ptr<AsyncRespArg>();
+          std::unique_ptr<AsyncRespArg> resp_arg =
+              std::make_unique<AsyncRespArg>();
 
           resp_arg->hd = server;
           resp_arg->fd = sock;

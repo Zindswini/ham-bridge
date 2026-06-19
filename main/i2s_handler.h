@@ -16,7 +16,7 @@ esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle);
 void playI2sMusic(void);
 
 #ifdef __cplusplus
-{
+}
 #endif
 
 #endif // I2S_HANDLER_H

@@ -66,7 +66,7 @@ u8g2_t u8g2;
 static struct screenInformation displayState;
 std::shared_mutex displayMutex;
 
-extern "C" void drawLoadingScreen(char *loadingText) {
+extern "C" void drawLoadingScreen(const char *loadingText) {
   u8g2_ClearBuffer(&u8g2);
   u8g2_SetFont(&u8g2, u8g2_font_helvB08_tr);
 

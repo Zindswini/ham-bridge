@@ -6,6 +6,8 @@
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
 #include "esp_system.h"
+#include <array>
+#include <cstdint>
 #include <freertos/FreeRTOS.h>
 #include <freertos/projdefs.h>
 #include <freertos/task.h>
@@ -16,6 +18,7 @@
 // Other ham_bridge components
 #include "config.h"
 #include "ethernet_handler.h"
+#include "hal/systimer_hal.h"
 #include "http_server.h"
 #include "i2s_handler.h"
 #include "input_handler.h"
@@ -30,7 +33,7 @@ uint32_t last_draw_time;
 
 void debugOutputTask(void) {}
 
-void app_main(void) {
+extern "C" void app_main(void) {
   vTaskDelay(pdMS_TO_TICKS(1500)); // Delay for monitoring reconnect
   ESP_LOGI(tag, "Hello world!");
 
@@ -77,7 +80,8 @@ void app_main(void) {
       .scl_io_num = PIN_SCL,
       .clk_source = I2C_CLK_SRC_DEFAULT,
       .glitch_ignore_cnt = 7,
-      .flags.enable_internal_pullup = 1,
+      .intr_priority = 0,
+      .flags = {.enable_internal_pullup = 1, .allow_pd = 1},
   };
   ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_cfg, &i2c_bus_handle));
   i2c_master_bus_reset(i2c_bus_handle);
@@ -144,12 +148,12 @@ void app_main(void) {
               nullptr);
   ESP_LOGI(tag, "Created Web Server Task");
 
-  while (1) {
-    char *out_buf = nullptr;
-    out_buf = malloc(sizeof(char) * 2048);
-    vTaskList(out_buf);
-    ESP_LOGI(tag, out_buf);
-    free(out_buf);
-    vTaskDelay(10000);
+  while (true) {
+    std::array<char, 2048> out_buf;
+
+    vTaskGetRunTimeStats(out_buf.data());
+    ESP_LOGI(tag, out_buf.data());
+
+    vTaskDelay(pdMS_TO_TICKS(10000));
   }
 }

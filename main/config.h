@@ -1,9 +1,11 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <soc/gpio_num.h>
+
 // OLED Display and ES8388 Control
-#define PIN_SDA 1
-#define PIN_SCL 15
+#define PIN_SDA GPIO_NUM_1
+#define PIN_SCL GPIO_NUM_15
 
 // ES8388 I2S Pins
 #define PIN_DOUT 3

@@ -20,7 +20,7 @@ extern "C" {
 #endif
 
 void drawScreen();
-void drawLoadingScreen(char *loadingText);
+void drawLoadingScreen(const char *loadingText);
 
 void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle);
 void screenRefreshTask(void);
