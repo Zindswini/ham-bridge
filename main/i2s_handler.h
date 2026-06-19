@@ -13,7 +13,7 @@ extern "C" {
 
 esp_err_t i2sDriverInit(void);
 esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle);
-void playI2sMusic(void);
+void playI2sMusic(void *args);
 
 #ifdef __cplusplus
 }

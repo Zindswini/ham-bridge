@@ -12,7 +12,7 @@ struct AsyncRespArg {
 extern "C" {
 #endif
 
-void wssServerTask();
+void wssServerTask(void *args);
 
 #ifdef __cplusplus
 }

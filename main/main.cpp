@@ -11,14 +11,11 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/projdefs.h>
 #include <freertos/task.h>
-#include <inttypes.h>
-#include <stdlib.h>
-#include <time.h>
+#include <memory>
 
 // Other ham_bridge components
 #include "config.h"
 #include "ethernet_handler.h"
-#include "hal/systimer_hal.h"
 #include "http_server.h"
 #include "i2s_handler.h"
 #include "input_handler.h"
@@ -30,8 +27,6 @@ static const char *tag = "MAIN";
 
 i2c_master_bus_handle_t i2c_bus_handle;
 uint32_t last_draw_time;
-
-void debugOutputTask(void) {}
 
 extern "C" void app_main(void) {
   vTaskDelay(pdMS_TO_TICKS(1500)); // Delay for monitoring reconnect
@@ -81,7 +76,8 @@ extern "C" void app_main(void) {
       .clk_source = I2C_CLK_SRC_DEFAULT,
       .glitch_ignore_cnt = 7,
       .intr_priority = 0,
-      .flags = {.enable_internal_pullup = 1, .allow_pd = 1},
+      .trans_queue_depth = 0,
+      .flags = {.enable_internal_pullup = 1, .allow_pd = 0},
   };
   ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_cfg, &i2c_bus_handle));
   i2c_master_bus_reset(i2c_bus_handle);
@@ -129,30 +125,26 @@ extern "C" void app_main(void) {
   // Start FreeRTOS Tasks
   drawLoadingScreen("Starting Tasks");
   ESP_LOGI(tag, "Starting music task");
-  xTaskCreate((TaskFunction_t)playI2sMusic, "i2s_music", 4096, NULL, 3,
-              nullptr);
+  xTaskCreate(playI2sMusic, "i2s_music", 4096, NULL, 3, nullptr);
   ESP_LOGI(tag, "Created music task");
 
   ESP_LOGI(tag, "Starting Input Handler Task");
-  xTaskCreate((TaskFunction_t)processInputsTask, "process_inputs", 4096, NULL,
-              5, nullptr);
+  xTaskCreate(processInputsTask, "process_inputs", 4096, NULL, 5, nullptr);
   ESP_LOGI(tag, "Created Input Handler Task");
 
   ESP_LOGI(tag, "Starting Screen Refresh Task");
-  xTaskCreate((TaskFunction_t)screenRefreshTask, "screen_refresh", 4096, NULL,
-              8, nullptr);
+  xTaskCreate(screenRefreshTask, "screen_refresh", 4096, NULL, 8, nullptr);
   ESP_LOGI(tag, "Created Screen Refresh Task");
 
   ESP_LOGI(tag, "Starting Web Server Task");
-  xTaskCreate((TaskFunction_t)wssServerTask, "wss_web_server", 8192, NULL, 8,
-              nullptr);
+  xTaskCreate(wssServerTask, "wss_web_server", 8192, NULL, 8, nullptr);
   ESP_LOGI(tag, "Created Web Server Task");
 
   while (true) {
-    std::array<char, 2048> out_buf;
+    auto out_buf = std::make_unique<std::array<char, 2048>>();
 
-    vTaskGetRunTimeStats(out_buf.data());
-    ESP_LOGI(tag, out_buf.data());
+    vTaskGetRunTimeStats(out_buf->data());
+    ESP_LOGI(tag, out_buf->data());
 
     vTaskDelay(pdMS_TO_TICKS(10000));
   }

@@ -23,7 +23,7 @@ void drawScreen();
 void drawLoadingScreen(const char *loadingText);
 
 void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle);
-void screenRefreshTask(void);
+void screenRefreshTask(void *args);
 
 void processIncomingInput(button_types incomingButton);
 #ifdef __cplusplus

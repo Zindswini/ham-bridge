@@ -18,7 +18,7 @@ extern "C" {
 #endif
 
 void setupButtonGPIOTimer(void);
-void processInputsTask(void);
+void processInputsTask(void *args);
 
 #ifdef __cplusplus
 }

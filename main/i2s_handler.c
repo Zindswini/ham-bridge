@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include <freertos/FreeRTOS.h>
 #include <stdio.h>
+#include <sys/cdefs.h>
 
 // Espressif I2S Codec Library
 #include "driver/i2s_std.h"
@@ -130,7 +131,7 @@ esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle) {
   return ESP_OK;
 }
 
-void playI2sMusic(void) {
+void playI2sMusic(void *args __unused) {
   esp_err_t status = ESP_OK;
   size_t bytes_written = 0;
   uint8_t *data_ptr = (uint8_t *)music_pcm_start;

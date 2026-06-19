@@ -16,6 +16,7 @@
 #include "freertos/projdefs.h"
 
 #include "key_cert_manager.h"
+#include "portmacro.h"
 
 // Implementation Reference:
 // https://github.com/espressif/esp-idf/blob/v6.0.1/examples/protocols/https_server/wss_server/main/wss_server_example.c
@@ -30,8 +31,8 @@ static esp_err_t wsHandler(httpd_req_t *req) {
   }
 
   httpd_ws_frame_t ws_pkt = {
-      .final = false,
-      .fragmented = false,
+      .final = true,
+      .fragmented = false, // final must be true
       .type = HTTPD_WS_TYPE_CONTINUE,
       .payload = nullptr,
       .len = 0,
@@ -260,7 +261,7 @@ static void wssServerSendMessages() {
   }
 }
 
-extern "C" void wssServerTask() {
+void wssServerTask(void *args) {
   psa_crypto_init();
 
   ESP_LOGI(tag, "Registering connect/disconnect handlers");
@@ -272,5 +273,9 @@ extern "C" void wssServerTask() {
 
   ESP_LOGI(tag, "Registered connect/disconnect handlers");
 
-  wssServerSendMessages();
+  while (true) {
+    vTaskDelay(portMAX_DELAY);
+  }
+
+  // wssServerSendMessages();
 }

@@ -61,9 +61,10 @@ void setupEthernet(void) {
 
   ESP_ERROR_CHECK(esp_eth_start(s_eth_handles[0]));
 
-  if (xSemaphoreTake(ip_got_sem, portMAX_DELAY) != pdTRUE) {
-    ESP_LOGE(TAG, "Timeout waiting for ETH IP");
-  }
+  // Delay returning until IP assigned
+  // if (xSemaphoreTake(ip_got_sem, portMAX_DELAY) != pdTRUE) {
+  //   ESP_LOGE(TAG, "Timeout waiting for ETH IP");
+  // }
 }
 
 void *getIpAddr(void) {

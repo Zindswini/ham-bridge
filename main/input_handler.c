@@ -9,6 +9,7 @@
 #include "screen_handler.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <sys/cdefs.h>
 
 static const char *TAG = "INPUT_HANDLER";
 
@@ -87,7 +88,7 @@ void setupButtonGPIOTimer(void) {
   ESP_LOGD(TAG, "Set up Button Polling ISR Timer");
 }
 
-void processInputsTask(void) {
+void processInputsTask(void *args __unused) {
   uint32_t next_button = -1;
   while (true) {
     xQueueReceive(input_queue, &next_button, portMAX_DELAY);
