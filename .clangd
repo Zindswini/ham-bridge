@@ -10,6 +10,7 @@ Diagnostics:
       - modernize-*
       - cppcoreguidelines-*
       - performance-*
+      - bugprone-*
     Remove:
       - cppcoreguidelines-avoid-do-while
       - cppcoreguidelines-avoid-magic-numbers
@@ -51,8 +52,10 @@ Diagnostics:
       readability-identifier-naming.TypedefCase: lower_case
       readability-identifier-naming.VariableCase: lower_case
 
-  # Suppress:
-  #   - Wold-style-cast # grrr, Esp-idf uses these a ton, makes every macro warn
+  Suppress:
+    - Wold-style-cast
+    - attribute_not_type_attr
+
 
 ---
 
