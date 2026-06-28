@@ -1,5 +1,6 @@
 #include "http_server.h"
 
+#include <cstddef>
 #include <esp_err.h>
 #include <esp_eth_com.h>
 #include <esp_event.h>
@@ -148,32 +149,48 @@ static void sendPing(void *arg) {
   }
 }
 
-esp_err_t wssOpenFd(httpd_handle_t hd, int sockfd) {
+esp_err_t wssOpenFd(httpd_handle_t handle __unused, int sockfd) {
   ESP_LOGI(tag, "New httpd connection with sockfd %d", sockfd);
   return ESP_OK;
 }
 
 static void startWssServer() {
   // Prepare web socket server
-
-  ESP_LOGI(tag, "Starting HTTPS Websocket Server");
   esp_err_t ret = ESP_OK;
+  if (ENABLE_SSL) {
+    ESP_LOGI(tag, "Starting HTTPS Websocket Server");
 
-  httpd_ssl_config_t conf = HTTPD_SSL_CONFIG_DEFAULT();
-  conf.httpd.max_open_sockets = MAX_HTTPS_CLIENTS;
-  conf.httpd.global_user_ctx = nullptr;
-  conf.httpd.open_fn = wssOpenFd;
-  // conf.httpd.close_fn = wssCloseFd;
+    httpd_ssl_config_t conf = HTTPD_SSL_CONFIG_DEFAULT();
+    conf.httpd.max_open_sockets = MAX_HTTP_CLIENTS;
+    conf.httpd.global_user_ctx = nullptr;
+    conf.httpd.open_fn = wssOpenFd;
+    // conf.httpd.close_fn = wssCloseFd;
 
-  // Ask key_cert_manager to attach cert pointers to config
-  ESP_ERROR_CHECK(attachKeyCertBundleToConfig(&conf));
+    // Ask key_cert_manager to attach cert pointers to config
+    ESP_ERROR_CHECK(attachKeyCertBundleToConfig(&conf));
 
-  ret = httpd_ssl_start(&server, &conf);
-  if (ret != ESP_OK) {
-    ESP_LOGE(tag, "Error starting httpd ssl server: %d", ret);
-    return;
+    ret = httpd_ssl_start(&server, &conf);
+    if (ret != ESP_OK) {
+      ESP_LOGE(tag, "Error starting httpd ssl server: %d", ret);
+      return;
+    }
+    ESP_LOGI(tag, "Started httpd ssl server successfully");
+  } else {
+    ESP_LOGI(tag, "Starting HTTP Websocket Server (INSECURE)");
+
+    httpd_config_t conf = HTTPD_DEFAULT_CONFIG();
+    conf.max_open_sockets = MAX_HTTP_CLIENTS;
+    conf.global_user_ctx = nullptr;
+    conf.open_fn = wssOpenFd;
+
+    ret = httpd_start(&server, &conf);
+
+    if (ret != ESP_OK) {
+      ESP_LOGE(tag, "Error starting httpd insecure server: %d", ret);
+      return;
+    }
+    ESP_LOGI(tag, "Started httpd insecure server successfully");
   }
-  ESP_LOGI(tag, "Started httpd ssl server successfully");
 
   ESP_LOGI(tag, "Registering URI Handlers");
   httpd_register_uri_handler(server, &kWsUriConf);
@@ -226,8 +243,8 @@ static void wssServerSendMessages() {
     }
     ESP_LOGI(tag, "Sending messages to all http clients");
 
-    size_t clients = MAX_HTTPS_CLIENTS;
-    std::array<int, MAX_HTTPS_CLIENTS> client_fds{};
+    size_t clients = MAX_HTTP_CLIENTS;
+    std::array<int, MAX_HTTP_CLIENTS> client_fds{};
 
     if (httpd_get_client_list(server, &clients, client_fds.data()) == ESP_OK) {
       for (size_t i = 0; i < clients; i++) {
@@ -261,7 +278,7 @@ static void wssServerSendMessages() {
   }
 }
 
-void wssServerTask(void *args) {
+void wssServerTask(void *args __unused) {
   psa_crypto_init();
 
   ESP_LOGI(tag, "Registering connect/disconnect handlers");

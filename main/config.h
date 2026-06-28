@@ -27,9 +27,10 @@
 #define DEBOUNCE_DELAY_MS 50
 
 // HTTPS Server Settings
-#define MAX_HTTPS_CLIENTS 4
+#define MAX_HTTP_CLIENTS 4
 
 // TLS Certificate Settings
+#define ENABLE_SSL false
 #define KEY_BITS 2048
 #define NVS_CERT_NAMESPACE "tls_store"
 #define NVS_TLS_CERT_KEY "cert_val"

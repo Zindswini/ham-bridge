@@ -300,7 +300,7 @@ void updateDisplayState() {
   lock.release();
 }
 
-extern "C" void screenRefreshTask() {
+extern "C" void screenRefreshTask(void *args __unused) {
   while (1) {
     updateDisplayState();
     drawScreen();
