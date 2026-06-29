@@ -2,6 +2,7 @@
 #include "config.h"
 
 #include "driver/i2c_types.h"
+#include "driver/i2s_types.h"
 #include "esp_log.h"
 #include <freertos/FreeRTOS.h>
 #include <stdio.h>
@@ -11,6 +12,7 @@
 #include "driver/i2s_std.h"
 #include "esp_codec_dev.h"
 #include "esp_codec_dev_defaults.h"
+#include "soc/clk_tree_defs.h"
 
 // I2S Handles
 static i2s_chan_handle_t tx_handle = nullptr;
@@ -33,8 +35,8 @@ esp_err_t i2sDriverInit(void) {
               .mclk = PIN_MCLK,
               .bclk = PIN_SCLK,
               .ws = PIN_LRCLK,
-              .din = PIN_DIN,
               .dout = PIN_DOUT,
+              .din = PIN_DIN,
               .invert_flags =
                   {
                       .mclk_inv = 0,
@@ -70,11 +72,10 @@ esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle) {
   ESP_LOGD(TAG, "Initialized I2S I2C Config");
 
   ESP_LOGD(TAG, "Initializing I2S Config");
-  audio_codec_i2s_cfg_t i2s_cfg = {
-      .port = I2S_NUM_0,
-      .rx_handle = rx_handle,
-      .tx_handle = tx_handle,
-  };
+  audio_codec_i2s_cfg_t i2s_cfg = {.port = I2S_NUM_0,
+                                   .rx_handle = rx_handle,
+                                   .tx_handle = tx_handle,
+                                   .clk_src = I2S_CLK_SRC_DEFAULT};
   const audio_codec_data_if_t *data_if = audio_codec_new_i2s_data(&i2s_cfg);
   assert(data_if);
   ESP_LOGD(TAG, "Initialized I2S Config");

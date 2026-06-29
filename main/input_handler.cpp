@@ -15,10 +15,12 @@ static const char *TAG = "INPUT_HANDLER";
 
 static volatile uint64_t last_press_time = 0;
 
-static volatile struct button_state current_button_state = {false, false,
-                                                            false};
-static volatile struct button_state previous_button_state = {false, false,
-                                                             false};
+static button_state current_button_state = {.increment_button_state = false,
+                                            .decrement_button_state = false,
+                                            .confirm_button_state = false};
+static button_state previous_button_state = {.increment_button_state = false,
+                                             .decrement_button_state = false,
+                                             .confirm_button_state = false};
 static QueueHandle_t input_queue;
 
 static void IRAM_ATTR buttonPollingISR(void *args) {
@@ -67,20 +69,25 @@ void setupButtonGPIOTimer(void) {
   input_queue = xQueueCreate(10, sizeof(uint32_t));
 
   gpio_config_t gpio_conf = {
-      .intr_type = GPIO_INTR_NEGEDGE,
-      .mode = GPIO_MODE_INPUT,
       .pin_bit_mask = (1ULL << INCREMENT_BUTTON_PIN) |
                       (1ULL << DECREMENT_BUTTON_PIN) |
                       (1ULL << CONFIRM_BUTTON_PIN),
-      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .mode = GPIO_MODE_INPUT,
       .pull_up_en = GPIO_PULLUP_ENABLE,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .intr_type = GPIO_INTR_NEGEDGE,
   };
   ESP_LOGD(TAG, "Configuring GPIO");
   ESP_ERROR_CHECK(gpio_config(&gpio_conf));
 
   ESP_LOGD(TAG, "Setting up Button Polling ISR Timer");
-  esp_timer_create_args_t timer_args = {.callback = buttonPollingISR,
-                                        .name = "Button Polling Timer"};
+  esp_timer_create_args_t timer_args = {
+      .callback = buttonPollingISR,
+      .arg = nullptr,
+      .dispatch_method = ESP_TIMER_TASK,
+      .name = "Button Polling Timer",
+      .skip_unhandled_events = false,
+  };
   esp_timer_handle_t timer_handle = nullptr;
   ESP_ERROR_CHECK(esp_timer_create(&timer_args, &timer_handle));
   ESP_ERROR_CHECK(
@@ -93,6 +100,6 @@ void processInputsTask(void *args __unused) {
   while (true) {
     xQueueReceive(input_queue, &next_button, portMAX_DELAY);
     ESP_LOGD(TAG, "Received button press from queue: %i", next_button);
-    processIncomingInput(next_button);
+    processIncomingInput(button_types{next_button});
   }
 }

@@ -16,6 +16,7 @@
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
 #include "portmacro.h"
+#include <string.h>
 
 static const char *TAG = "ethernet_handler";
 
@@ -42,6 +43,7 @@ void setupEthernet(void) {
   esp_netif_inherent_config_t esp_netif_config =
       ESP_NETIF_INHERENT_DEFAULT_ETH();
   esp_netif_config_t cfg_spi = {.base = &esp_netif_config,
+                                .driver = nullptr,
                                 .stack = ESP_NETIF_NETSTACK_DEFAULT_ETH};
 
   // Iperf example loops here but I will only ever have one ethernet interface
