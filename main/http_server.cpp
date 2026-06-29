@@ -264,7 +264,9 @@ static void wssServerSendMessages() {
               httpd_queue_work(resp_arg->hd, sendHello, resp_arg.get());
 
           if (ret == ESP_OK) {
-            resp_arg.release();
+            // httpd will call delete on pointer.
+            // Release here to avoid double free.
+            resp_arg.release(); // NOLINT(bugprone-unused-return-value)
           } else {
             ESP_LOGE(tag, "httpd_queue_work failed");
             send_messages = false;

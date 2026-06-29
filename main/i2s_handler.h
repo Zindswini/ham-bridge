@@ -3,9 +3,19 @@
 
 #include "driver/i2c_types.h"
 #include "esp_err.h"
+#include <cstddef>
+#include <span>
 
-extern const uint8_t music_pcm_start[] asm("_binary_rick_pcm_start");
-extern const uint8_t music_pcm_end[] asm("_binary_rick_pcm_end");
+// Create reference to PCM data provided by linker
+// NOLINTBEGIN(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays,
+// cppcoreguidelines-pro-bounds-array-to-pointer-decay)
+extern const std::byte kMusicPcmStart[] asm("_binary_rick_pcm_start");
+extern const std::byte kMusicPcmEnd[] asm("_binary_rick_pcm_end");
+inline std::span<const std::byte> musicPcm() {
+  return {kMusicPcmEnd, static_cast<size_t>(kMusicPcmEnd - kMusicPcmStart)};
+}
+// NOLINTEND(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays,
+// cppcoreguidelines-pro-bounds-array-to-pointer-decay)
 
 #ifdef __cplusplus
 extern "C" {

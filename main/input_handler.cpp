@@ -7,23 +7,24 @@
 #include "esp_timer.h"
 #include "hal/gpio_types.h"
 #include "screen_handler.h"
+#include <cstdint>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <sys/cdefs.h>
 
-static const char *TAG = "INPUT_HANDLER";
+static const char *tag = "INPUT_HANDLER";
 
 static volatile uint64_t last_press_time = 0;
 
-static button_state current_button_state = {.increment_button_state = false,
+static ButtonState current_button_state = {.increment_button_state = false,
+                                           .decrement_button_state = false,
+                                           .confirm_button_state = false};
+static ButtonState previous_button_state = {.increment_button_state = false,
                                             .decrement_button_state = false,
                                             .confirm_button_state = false};
-static button_state previous_button_state = {.increment_button_state = false,
-                                             .decrement_button_state = false,
-                                             .confirm_button_state = false};
 static QueueHandle_t input_queue;
 
-static void IRAM_ATTR buttonPollingISR(void *args) {
+static void IRAM_ATTR buttonPollingISR(void *args __unused) {
   // Debouncing
   previous_button_state = current_button_state;
 
@@ -35,31 +36,31 @@ static void IRAM_ATTR buttonPollingISR(void *args) {
       gpio_get_level(DECREMENT_BUTTON_PIN) != 0;
 
   if (!previous_button_state.confirm_button_state &&
-      (int)current_button_state.confirm_button_state) {
+      (static_cast<int>(current_button_state.confirm_button_state) != 0)) {
     BaseType_t hp_task_woken = pdFALSE;
-    button_types button_type = BUTTON_TYPE_CONFIRM;
+    ButtonTypes button_type = kButtonTypeConfirm;
     xQueueSendToBackFromISR(input_queue, &button_type, &hp_task_woken);
-    if (hp_task_woken) {
+    if (hp_task_woken != 0) {
       portYIELD_FROM_ISR();
     }
   }
 
   if (!previous_button_state.increment_button_state &&
-      (int)current_button_state.increment_button_state) {
+      (static_cast<int>(current_button_state.increment_button_state) != 0)) {
     BaseType_t hp_task_woken = pdFALSE;
-    button_types button_type = BUTTON_TYPE_INCREMENT;
+    ButtonTypes button_type = kButtonTypeIncrement;
     xQueueSendToBackFromISR(input_queue, &button_type, &hp_task_woken);
-    if (hp_task_woken) {
+    if (hp_task_woken != 0) {
       portYIELD_FROM_ISR();
     }
   }
 
   if (!previous_button_state.decrement_button_state &&
-      (int)current_button_state.decrement_button_state) {
+      (static_cast<int>(current_button_state.decrement_button_state) != 0)) {
     BaseType_t hp_task_woken = pdFALSE;
-    button_types button_type = BUTTON_TYPE_DECREMENT;
+    ButtonTypes button_type = kButtonTypeDecrement;
     xQueueSendToBackFromISR(input_queue, &button_type, &hp_task_woken);
-    if (hp_task_woken) {
+    if (hp_task_woken != 0) {
       portYIELD_FROM_ISR();
     }
   }
@@ -77,10 +78,10 @@ void setupButtonGPIOTimer(void) {
       .pull_down_en = GPIO_PULLDOWN_DISABLE,
       .intr_type = GPIO_INTR_NEGEDGE,
   };
-  ESP_LOGD(TAG, "Configuring GPIO");
+  ESP_LOGD(tag, "Configuring GPIO");
   ESP_ERROR_CHECK(gpio_config(&gpio_conf));
 
-  ESP_LOGD(TAG, "Setting up Button Polling ISR Timer");
+  ESP_LOGD(tag, "Setting up Button Polling ISR Timer");
   esp_timer_create_args_t timer_args = {
       .callback = buttonPollingISR,
       .arg = nullptr,
@@ -91,15 +92,15 @@ void setupButtonGPIOTimer(void) {
   esp_timer_handle_t timer_handle = nullptr;
   ESP_ERROR_CHECK(esp_timer_create(&timer_args, &timer_handle));
   ESP_ERROR_CHECK(
-      esp_timer_start_periodic(timer_handle, 10 * 1000)); // Run every 10ms
-  ESP_LOGD(TAG, "Set up Button Polling ISR Timer");
+      esp_timer_start_periodic(timer_handle, 10ULL * 1000)); // Run every 10ms
+  ESP_LOGD(tag, "Set up Button Polling ISR Timer");
 }
 
 void processInputsTask(void *args __unused) {
-  uint32_t next_button = -1;
+  uint8_t next_button = 0;
   while (true) {
     xQueueReceive(input_queue, &next_button, portMAX_DELAY);
-    ESP_LOGD(TAG, "Received button press from queue: %i", next_button);
-    processIncomingInput(button_types{next_button});
+    ESP_LOGD(tag, "Received button press from queue: %i", next_button);
+    processIncomingInput(ButtonTypes{next_button});
   }
 }

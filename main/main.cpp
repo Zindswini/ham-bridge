@@ -28,7 +28,7 @@ static const char *tag = "MAIN";
 i2c_master_bus_handle_t i2c_bus_handle;
 uint32_t last_draw_time;
 
-extern "C" void app_main(void) {
+extern "C" void app_main(void) {   // NOLINT(readability-identifier-naming)
   vTaskDelay(pdMS_TO_TICKS(1500)); // Delay for monitoring reconnect
   ESP_LOGI(tag, "Hello world!");
 

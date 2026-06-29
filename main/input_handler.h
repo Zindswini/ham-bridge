@@ -2,13 +2,13 @@
 #define INPUT_HANDLER_H
 
 #include <cstdint>
-enum button_types : uint32_t {
-  BUTTON_TYPE_INCREMENT = 0,
-  BUTTON_TYPE_DECREMENT = 1,
-  BUTTON_TYPE_CONFIRM = 2
+enum ButtonTypes : uint8_t {
+  kButtonTypeIncrement = 0,
+  kButtonTypeDecrement = 1,
+  kButtonTypeConfirm = 2
 };
 
-struct button_state {
+struct ButtonState {
   bool increment_button_state;
   bool decrement_button_state;
   bool confirm_button_state;

@@ -1,15 +1,9 @@
 #ifndef ETHERNET_HANDLER_H
 #define ETHERNET_HANDLER_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <string>
 
 void setupEthernet(void);
-void *getIpAddr(void);
-
-#ifdef __cplusplus
-}
-#endif
+std::string getIpAddr(void);
 
 #endif // ETHERNET_HANDLER_H

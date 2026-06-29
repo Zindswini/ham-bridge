@@ -20,12 +20,12 @@ extern "C" {
 #endif
 
 void drawScreen();
-void drawLoadingScreen(const char *loadingText);
+void drawLoadingScreen(const char *loading_text);
 
 void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle);
 void screenRefreshTask(void *args);
 
-void processIncomingInput(button_types incomingButton);
+void processIncomingInput(ButtonTypes incoming_button);
 #ifdef __cplusplus
 }
 #endif
