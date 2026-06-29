@@ -8,6 +8,7 @@
 #include "u8x8.h"
 #include <FreeRTOSConfig.h>
 #include <array>
+#include <cstdint>
 #include <ctime>
 #include <esp_log.h>
 #include <esp_netif.h>
@@ -58,7 +59,7 @@ struct screenInformation {
   tm timeinfo;
   uint32_t menuIndex = 0;
   std::shared_ptr<std::array<std::shared_ptr<menuListObject>, 10>> menuList;
-  std::array<const uint8_t *, 4> iconList;
+  std::array<std::array<uint8_t, 12>, 4> iconList;
 };
 
 u8g2_t u8g2;
@@ -127,12 +128,12 @@ void drawMenuItem(u8g2_uint_t y, menuListObject *menuItem, bool active,
   case MENU_ITEM_TYPE_SUBMENU:
     u8g2_DrawXBM(&u8g2, (u8g2.width - MENU_PADDING - squish - ICON_WIDTH),
                  y + (MENU_PADDING / 2), ICON_WIDTH, ICON_HEIGHT,
-                 HAM_BRIDGE_ICON_arrowFWD);
+                 kHamBridgeIconArrowFWD.data());
     break;
   case MENU_ITEM_TYPE_BACK:
     u8g2_DrawXBM(&u8g2, (u8g2.width - MENU_PADDING - squish - ICON_WIDTH),
                  y + (MENU_PADDING / 2), ICON_WIDTH, ICON_HEIGHT,
-                 HAM_BRIDGE_ICON_arrowBWD);
+                 kHamBridgeIconArrowBWD.data());
     break;
   }
 }
@@ -144,13 +145,11 @@ extern "C" void drawScreen() {
   u8g2_SetFont(&u8g2, u8g2_font_helvB08_tr);
 
   // Draw Icons
-  int i = 0;
-  while (displayState.iconList.at(i) != nullptr) {
-    const uint8_t *currentIconObject =
-        reinterpret_cast<const uint8_t *>(displayState.iconList.at(i));
+  for (int i = 0; i < displayState.iconList.size(); i++) {
+    const std::array<uint8_t, 12> currentIconObject =
+        displayState.iconList.at(i);
     u8g2_DrawXBM(&u8g2, i * (ICON_WIDTH + ICON_PADDING), 0, ICON_WIDTH,
-                 ICON_HEIGHT, currentIconObject);
-    i++;
+                 ICON_HEIGHT, currentIconObject.data());
   }
 
   // Draw Time
@@ -236,13 +235,13 @@ extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
       menuListObject{.text = "Return",
                      .item_type = MENU_ITEM_TYPE_BACK,
                      .menuListValue = topLevelMenu});
-  debugStatMenu->at(1) = std::make_shared<menuListObject>(menuListObject{
-      .text = "IP Address",
-      .item_type = MENU_ITEM_TYPE_STRING,
-      .value = (void *)"Test",
-      .getterMethod = getIpAddr,
-      .poll = true,
-  });
+  // debugStatMenu->at(1) = std::make_shared<menuListObject>(menuListObject{
+  //     .text = "IP Address",
+  //     .item_type = MENU_ITEM_TYPE_STRING,
+  //     .value = (void *)"Test",
+  //     .getterMethod = getIpWrapper,
+  //     .poll = true,
+  // });
   debugStatMenu->at(2) = std::make_shared<menuListObject>(menuListObject{
       .text = "Example 2",
       .item_type = MENU_ITEM_TYPE_NUMERICAL,
@@ -256,9 +255,9 @@ extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
 
   displayState.menuList = topLevelMenu;
 
-  displayState.iconList[0] = HAM_BRIDGE_ICON_mic;
-  displayState.iconList[1] = HAM_BRIDGE_ICON_lan_enable;
-  displayState.iconList[2] = HAM_BRIDGE_ICON_lan_disable;
+  displayState.iconList[0] = kHamBridgeIconMicEnable;
+  displayState.iconList[1] = kHamBridgeIconLanEnable;
+  displayState.iconList[2] = kHamBridgeIconLanDisable;
 }
 
 void updateDisplayState() {
@@ -307,12 +306,12 @@ extern "C" void screenRefreshTask(void *args __unused) {
     vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
-extern "C" void processIncomingInput(button_types incomingButton) {
+extern "C" void processIncomingInput(ButtonTypes incoming_button) {
   // Make sure display won't draw on incomplete data
   std::shared_lock lock(displayMutex);
   // Handle up/increment button pressed
-  switch (incomingButton) {
-  case BUTTON_TYPE_INCREMENT:
+  switch (incoming_button) {
+  case kButtonTypeIncrement:
     if (displayState.menuIndex < displayState.menuList->size() - 1 &&
         displayState.menuList->at(displayState.menuIndex + 1) != nullptr) {
       displayState.menuIndex++;
@@ -320,7 +319,7 @@ extern "C" void processIncomingInput(button_types incomingButton) {
     break;
 
   // Handle down/decrement button pressed
-  case BUTTON_TYPE_DECREMENT:
+  case kButtonTypeDecrement:
     if (displayState.menuIndex > 0 &&
         displayState.menuList->at(displayState.menuIndex - 1) != nullptr) {
       displayState.menuIndex--;
@@ -329,7 +328,7 @@ extern "C" void processIncomingInput(button_types incomingButton) {
 
     // Handle confirm button pressed
     // Action depends on current menu object
-  case BUTTON_TYPE_CONFIRM:
+  case kButtonTypeConfirm:
     menuListObject *activeMenuItem =
         displayState.menuList->at(displayState.menuIndex).get();
     switch (activeMenuItem->item_type) {
