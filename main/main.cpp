@@ -143,7 +143,12 @@ extern "C" void app_main(void) {   // NOLINT(readability-identifier-naming)
   while (true) {
     auto out_buf = std::make_unique<std::array<char, 2048>>();
 
-    vTaskGetRunTimeStats(out_buf->data());
+    out_buf->at(0) = '\n';
+    vTaskGetRunTimeStats(out_buf->data() + 1);
+    ESP_LOGI(tag, out_buf->data());
+
+    out_buf->at(0) = '\n';
+    vTaskList(out_buf->data() + 1);
     ESP_LOGI(tag, out_buf->data());
 
     vTaskDelay(pdMS_TO_TICKS(10000));

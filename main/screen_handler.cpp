@@ -9,66 +9,60 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <ctime>
 #include <esp_log.h>
 #include <esp_netif.h>
-#include <format>
 #include <freertos/FreeRTOS.h>
 #include <freertos/idf_additions.h>
 #include <freertos/projdefs.h>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
-#include <string>
 #include <sys/_timeval.h>
 #include <sys/cdefs.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <utility>
 #include <variant>
 
 static const char *tag = "SCREEN_HANDLER";
-
+typedef std::array<char, 16> screen_label;
 /*
 Base class for drawable menu items.
 */
 class MenuItem {
 public:
   // String Constructor
-  MenuItem(std::string label, std::array<uint8_t, 12> icon, bool hidden,
-           std::string value)
-      : label_(std::move(label)), icon_(icon), hidden_(hidden),
-        value_(value) {};
+  MenuItem(screen_label label, std::array<uint8_t, 12> icon, bool hidden,
+           screen_label value)
+      : label_(label), icon_(icon), hidden_(hidden), value_(value) {};
   // Int Constructor
-  MenuItem(std::string label, std::array<uint8_t, 12> icon, bool hidden,
+  MenuItem(screen_label label, std::array<uint8_t, 12> icon, bool hidden,
            int value)
-      : label_(std::move(label)), icon_(icon), hidden_(hidden),
-        value_(value) {};
+      : label_(label), icon_(icon), hidden_(hidden), value_(value) {};
   // Float Constructor
-  MenuItem(std::string label, std::array<uint8_t, 12> icon, bool hidden,
+  MenuItem(screen_label label, std::array<uint8_t, 12> icon, bool hidden,
            float value)
-      : label_(std::move(label)), icon_(icon), hidden_(hidden),
-        value_(value) {};
+      : label_(label), icon_(icon), hidden_(hidden), value_(value) {};
   // Bool Constructor
-  MenuItem(std::string label, std::array<uint8_t, 12> icon, bool hidden,
+  MenuItem(screen_label label, std::array<uint8_t, 12> icon, bool hidden,
            bool value)
-      : label_(std::move(label)), icon_(icon), hidden_(hidden),
-        value_(value) {};
+      : label_(label), icon_(icon), hidden_(hidden), value_(value) {};
   // MenuItemList Constructor
-  MenuItem(std::string label, std::array<uint8_t, 12> icon, bool hidden,
+  MenuItem(screen_label label, std::array<uint8_t, 12> icon, bool hidden,
            std::shared_ptr<std::array<std::shared_ptr<MenuItem>, 10>> value)
-      : label_(std::move(label)), icon_(icon), hidden_(hidden),
-        value_(value) {};
+      : label_(label), icon_(icon), hidden_(hidden), value_(value) {};
 
   void draw(u8g2_t &u8g2, u8g2_int_t base_y, bool active);
 
-  auto getValue() { return value_; }
+  const auto &getValue() { return value_; }
 
 private:
-  std::string label_ = "UNDEFINED";
+  screen_label label_ = screen_label{"UNDEFINED"};
   std::array<uint8_t, 12> icon_ __unused;
   bool hidden_ __unused = false;
 
-  std::variant<std::string, int, float, bool,
+  std::variant<screen_label, int, float, bool,
                std::shared_ptr<std::array<std::shared_ptr<MenuItem>, 10>>>
       value_;
 };
@@ -107,34 +101,39 @@ void MenuItem::draw(u8g2_t &u8g2, u8g2_int_t base_y, bool active) {
   }
   // Draw text description element of menu item
   u8g2_DrawStr(&u8g2, squish + MENU_PADDING,
-               base_y + MENU_PADDING + TEXT_HEIGHT, label_.c_str());
+               base_y + MENU_PADDING + TEXT_HEIGHT, label_.data());
 
   // Draw Value based on type
   std::visit(
       Overloaded{
-          [&](const std::string &str_val) {
+          [&](const screen_label &str_val) {
             u8g2_DrawStr(&u8g2,
                          (u8g2.width - MENU_PADDING - squish -
-                          u8g2_GetStrWidth(&u8g2, str_val.c_str())),
-                         base_y + MENU_PADDING + TEXT_HEIGHT, str_val.c_str());
+                          u8g2_GetStrWidth(&u8g2, str_val.data())),
+                         base_y + MENU_PADDING + TEXT_HEIGHT, str_val.data());
           },
           [&](int int_val) {
             // Draw number as string on right side
-            std::string value_string = std::format("{:d}", int_val);
+            screen_label value_string;
+            std::snprintf(value_string.data(), value_string.size(), "%d",
+                          int_val);
+            // = std::format("{:d}", int_val);
             u8g2_DrawStr(&u8g2,
                          (u8g2.width - MENU_PADDING - squish -
-                          u8g2_GetStrWidth(&u8g2, value_string.c_str())),
+                          u8g2_GetStrWidth(&u8g2, value_string.data())),
                          base_y + MENU_PADDING + TEXT_HEIGHT,
-                         value_string.c_str());
+                         value_string.data());
           },
           [&](float float_val) {
             // Draw number with up to 2 decimals as string on right side
-            std::string value_string = std::format("{:.2f}", float_val);
+            screen_label value_string;
+            std::snprintf(value_string.data(), value_string.size(), "%.2f",
+                          static_cast<double>(float_val));
             u8g2_DrawStr(&u8g2,
                          (u8g2.width - MENU_PADDING - squish -
-                          u8g2_GetStrWidth(&u8g2, value_string.c_str())),
+                          u8g2_GetStrWidth(&u8g2, value_string.data())),
                          base_y + MENU_PADDING + TEXT_HEIGHT,
-                         value_string.c_str());
+                         value_string.data());
           },
           [&](bool bool_val) {
             // Draw Box Frame (size is textheight x textheight)
@@ -192,6 +191,9 @@ extern "C" void drawLoadingScreen(const char *loading_text) {
 
 extern "C" void drawScreen() {
   std::shared_lock lock(display_mutex);
+  if (display_state.menu_list == nullptr) {
+    return;
+  }
 
   u8g2_ClearBuffer(&u8g2);
   u8g2_SetFont(&u8g2, static_cast<const uint8_t *>(u8g2_font_helvB08_tr));
@@ -205,12 +207,13 @@ extern "C" void drawScreen() {
   }
 
   // Draw Time
-  std::string time_string =
-      std::format("{:02d}:{:02d}:{:02d}", display_state.timeinfo.tm_hour,
-                  display_state.timeinfo.tm_min, display_state.timeinfo.tm_sec);
+  screen_label time_string;
+  std::snprintf(time_string.data(), time_string.size(), "%02d:%02d:%02d",
+                display_state.timeinfo.tm_hour, display_state.timeinfo.tm_min,
+                display_state.timeinfo.tm_sec);
   u8g2_DrawStr(&u8g2,
-               (u8g2.width - u8g2_GetStrWidth(&u8g2, time_string.c_str())), 8,
-               time_string.c_str());
+               (u8g2.width - u8g2_GetStrWidth(&u8g2, time_string.data())), 8,
+               time_string.data());
 
   // Draw Horizontal Line
   u8g2_DrawHLine(&u8g2, 0, 10, u8g2.width);
@@ -232,7 +235,7 @@ extern "C" void drawScreen() {
                true);
   }
   // Draw bottom (next) item
-  if (display_state.menu_index < display_state.menu_list->size() &&
+  if (display_state.menu_index + 1 < display_state.menu_list->size() &&
       display_state.menu_list->at(display_state.menu_index + 1) != nullptr) {
     display_state.menu_list->at(display_state.menu_index + 1)
         ->draw(u8g2,
@@ -241,7 +244,6 @@ extern "C" void drawScreen() {
   }
 
   u8g2_SendBuffer(&u8g2);
-  lock.release();
 }
 
 extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
@@ -265,18 +267,19 @@ extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
       std::make_shared<std::array<std::shared_ptr<MenuItem>, 10>>();
 
   // Put elements in top level menu
-  top_level_menu->at(0) = std::make_unique<MenuItem>(
-      MenuItem("Example 1", kHamBridgeIconLanEnable, false, 1234));
+  top_level_menu->at(0) = std::make_shared<MenuItem>(
+      screen_label{"Example 1"}, kHamBridgeIconLanEnable, false, 1234);
 
-  top_level_menu->at(1) = std::make_unique<MenuItem>(
-      MenuItem("Example 2", kHamBridgeIconLanEnable, false, true));
+  top_level_menu->at(1) = std::make_shared<MenuItem>(
+      screen_label{"Example 2"}, kHamBridgeIconLanEnable, false, true);
 
-  top_level_menu->at(2) = std::make_unique<MenuItem>(
-      MenuItem("Debug Info", kHamBridgeIconLanEnable, false, debug_stat_menu));
+  top_level_menu->at(2) = std::make_shared<MenuItem>(screen_label{"Debug Info"},
+                                                     kHamBridgeIconLanEnable,
+                                                     false, debug_stat_menu);
 
   // Put elements in debug stat menu
-  debug_stat_menu->at(0) = std::make_unique<MenuItem>(
-      MenuItem("Return", kHamBridgeIconLanEnable, false, top_level_menu));
+  debug_stat_menu->at(0) = std::make_shared<MenuItem>(
+      screen_label{"Return"}, kHamBridgeIconLanEnable, false, top_level_menu);
   // debugStatMenu->at(1) = std::make_shared<menuListObject>(menuListObject{
   //     .text = "IP Address",
   //     .item_type = MENU_ITEM_TYPE_STRING,
@@ -284,11 +287,11 @@ extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
   //     .getterMethod = getIpWrapper,
   //     .poll = true,
   // });
-  debug_stat_menu->at(2) = std::make_unique<MenuItem>(
-      MenuItem("Example 1", kHamBridgeIconLanEnable, false, 1234));
+  debug_stat_menu->at(1) = std::make_shared<MenuItem>(
+      screen_label{"Example 1"}, kHamBridgeIconLanEnable, false, 1234);
 
-  debug_stat_menu->at(3) = std::make_unique<MenuItem>(
-      MenuItem("Example 2", kHamBridgeIconLanEnable, false, 1234));
+  debug_stat_menu->at(2) = std::make_shared<MenuItem>(
+      screen_label{"Example 2"}, kHamBridgeIconLanEnable, false, 1234);
 
   display_state.menu_list = top_level_menu;
 
@@ -299,7 +302,7 @@ extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
 
 void updateDisplayState() {
   // Update current time
-  std::shared_lock lock(display_mutex);
+  std::unique_lock lock(display_mutex);
   time_t now = 0;
   struct tm timeinfo{};
   time(&now);
@@ -310,6 +313,7 @@ void updateDisplayState() {
   // If nearby menu items have polling enabled,
   // call their getter and update the value
   /*
+  if (display_state.menu_list != nullptr) {}
   menuListObject *objectToDraw;
   // Update top slot
   if (displayState.menuIndex > 0) {
@@ -334,8 +338,6 @@ void updateDisplayState() {
     }
   }
   */
-
-  lock.release();
 }
 
 extern "C" void screenRefreshTask(void *args __unused) {
@@ -347,7 +349,11 @@ extern "C" void screenRefreshTask(void *args __unused) {
 }
 extern "C" void processIncomingInput(ButtonTypes incoming_button) {
   // Make sure display won't draw on incomplete data
-  std::shared_lock lock(display_mutex);
+  std::unique_lock lock(display_mutex);
+  if (display_state.menu_list == nullptr) {
+    // Drop event
+    return;
+  }
   // Handle up/increment button pressed
   switch (incoming_button) {
   case kButtonTypeIncrement:
@@ -372,7 +378,7 @@ extern "C" void processIncomingInput(ButtonTypes incoming_button) {
         display_state.menu_list->at(display_state.menu_index);
 
     std::visit(Overloaded{
-                   [&](const std::string &) {},
+                   [&](const screen_label &) {},
                    [&](const int &) {},
                    [&](const float &) {},
                    [&](const bool &) {},
@@ -384,5 +390,4 @@ extern "C" void processIncomingInput(ButtonTypes incoming_button) {
                active_menu_item->getValue());
     break;
   }
-  lock.release();
 }
