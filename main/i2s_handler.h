@@ -12,7 +12,7 @@
 extern const std::byte kMusicPcmStart[] asm("_binary_rick_pcm_start");
 extern const std::byte kMusicPcmEnd[] asm("_binary_rick_pcm_end");
 inline std::span<const std::byte> musicPcm() {
-  return {kMusicPcmEnd, static_cast<size_t>(kMusicPcmEnd - kMusicPcmStart)};
+  return {kMusicPcmStart, static_cast<size_t>(kMusicPcmEnd - kMusicPcmStart)};
 }
 // NOLINTEND(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays,
 // cppcoreguidelines-pro-bounds-array-to-pointer-decay)

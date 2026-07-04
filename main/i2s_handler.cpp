@@ -154,9 +154,8 @@ void playI2sMusic(void *args __unused) {
   size_t bytes_written = 0;
 
   while (true) {
-    status =
-        i2s_channel_write(tx_handle, musicPcm().data(), musicPcm().size_bytes(),
-                          &bytes_written, portMAX_DELAY);
+    status = i2s_channel_write(tx_handle, musicPcm().data(), musicPcm().size(),
+                               &bytes_written, portMAX_DELAY);
     if (status != ESP_OK) {
       ESP_LOGE(tag, "I2S write failed with reason: %s",
                esp_err_to_name(status));
