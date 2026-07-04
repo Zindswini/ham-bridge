@@ -5,17 +5,11 @@
 #include "u8g2.h"
 #include "u8g2_esp32_hal.h"
 #include "u8x8.h"
-#include <FreeRTOSConfig.h>
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
-#include <ctime>
 #include <esp_log.h>
-#include <esp_netif.h>
 #include <freertos/FreeRTOS.h>
-#include <freertos/idf_additions.h>
-#include <freertos/projdefs.h>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -26,7 +20,19 @@
 #include <variant>
 
 static const char *tag = "SCREEN_HANDLER";
+
+// Stack-allocated buffer for menu strings
 typedef std::array<char, 16> screen_label;
+
+// Helper template used in std::visit calls
+template <class... Ts> struct Overloaded : Ts... {
+  using Ts::operator()...;
+};
+template <class... Ts> Overloaded(Ts...) -> Overloaded<Ts...>;
+
+// Placeholder type to MenuItems with "back action" as their value
+struct MenuBack {};
+
 /*
 Base class for drawable menu items.
 */
@@ -52,6 +58,10 @@ public:
   MenuItem(screen_label label, std::array<uint8_t, 12> icon, bool hidden,
            std::shared_ptr<std::array<std::shared_ptr<MenuItem>, 10>> value)
       : label_(label), icon_(icon), hidden_(hidden), value_(value) {};
+  // Back Constructor
+  MenuItem(screen_label label, std::array<uint8_t, 12> icon, bool hidden,
+           MenuBack value)
+      : label_(label), icon_(icon), hidden_(hidden), value_(value) {};
 
   void draw(u8g2_t &u8g2, u8g2_int_t base_y, bool active);
 
@@ -63,9 +73,14 @@ private:
   bool hidden_ __unused = false;
 
   std::variant<screen_label, int, float, bool,
-               std::shared_ptr<std::array<std::shared_ptr<MenuItem>, 10>>>
+               std::shared_ptr<std::array<std::shared_ptr<MenuItem>, 10>>,
+               MenuBack>
       value_;
 };
+
+// Helper type to make definitions more concise
+typedef std::shared_ptr<std::array<std::shared_ptr<MenuItem>, 10>>
+    menu_item_list;
 
 class MenuItemEditable : public MenuItem {
 public:
@@ -84,13 +99,26 @@ private:
   bool active_ = false;
 };
 
-typedef std::shared_ptr<std::array<std::shared_ptr<MenuItem>, 10>>
-    menu_item_list;
-
-template <class... Ts> struct Overloaded : Ts... {
-  using Ts::operator()...;
+// Layer in the navigation stack
+struct NavLayer {
+  menu_item_list list = nullptr;
+  uint32_t menu_index = 0;
 };
-template <class... Ts> Overloaded(Ts...) -> Overloaded<Ts...>;
+
+// Holder for overall menu state
+// Top level object each screen draw starts from
+struct ScreenInformation {
+  // Time object used for drawing clock
+  tm timeinfo{};
+
+  // List of icons displayed in the top left
+  std::array<std::array<uint8_t, 12>, 4> icon_list{};
+
+  // Navigation stack
+  // Pushed when entering submenu, popped when navigating back
+  std::array<NavLayer, MENU_MAX_DEPTH> nav_stack{};
+  size_t nav_depth = 0;
+};
 
 void MenuItem::draw(u8g2_t &u8g2, u8g2_int_t base_y, bool active) {
   uint32_t squish = !active ? MENU_INACTIVE_SQUISH : 0;
@@ -154,6 +182,12 @@ void MenuItem::draw(u8g2_t &u8g2, u8g2_int_t base_y, bool active) {
                          base_y + (MENU_PADDING / 2), ICON_WIDTH, ICON_HEIGHT,
                          kHamBridgeIconArrowFWD.data());
           },
+          [&](const MenuBack &) {
+            u8g2_DrawXBM(&u8g2,
+                         (u8g2.width - MENU_PADDING - squish - ICON_WIDTH),
+                         base_y + (MENU_PADDING / 2), ICON_WIDTH, ICON_HEIGHT,
+                         kHamBridgeIconArrowBWD.data());
+          },
 
       },
       value_);
@@ -161,23 +195,14 @@ void MenuItem::draw(u8g2_t &u8g2, u8g2_int_t base_y, bool active) {
 
 // void MenuItemEditable::draw(u8g2_t &u8g2, u8g2_int_t base_y) {}
 
-/*
-Holder for overall menu state
-Top level object each screen draw starts from
-*/
-struct ScreenInformation {
-  tm timeinfo{};
-  uint32_t menu_index = 0;
-  menu_item_list menu_list = nullptr;
-  std::array<std::array<uint8_t, 12>, 4> icon_list{};
-};
-
 u8g2_t u8g2;
 
 static struct ScreenInformation display_state;
 std::shared_mutex display_mutex;
 
 extern "C" void drawLoadingScreen(const char *loading_text) {
+  std::unique_lock lock(display_mutex);
+
   u8g2_ClearBuffer(&u8g2);
   u8g2_SetFont(&u8g2, static_cast<const uint8_t *>(u8g2_font_helvB08_tr));
 
@@ -190,8 +215,8 @@ extern "C" void drawLoadingScreen(const char *loading_text) {
 }
 
 extern "C" void drawScreen() {
-  std::shared_lock lock(display_mutex);
-  if (display_state.menu_list == nullptr) {
+  std::unique_lock lock(display_mutex);
+  if (display_state.nav_stack.at(display_state.nav_depth).list == nullptr) {
     return;
   }
 
@@ -200,7 +225,7 @@ extern "C" void drawScreen() {
 
   // Draw Icons
   for (size_t i = 0; i < display_state.icon_list.size(); i++) {
-    const std::array<uint8_t, 12> current_icon_object =
+    const std::array<uint8_t, 12> &current_icon_object =
         display_state.icon_list.at(i);
     u8g2_DrawXBM(&u8g2, i * (ICON_WIDTH + ICON_PADDING), 0, ICON_WIDTH,
                  ICON_HEIGHT, current_icon_object.data());
@@ -220,24 +245,28 @@ extern "C" void drawScreen() {
 
   // Draw menu items
   // Draw top (previous) item
-  if (display_state.menu_index > 0 &&
-      display_state.menu_list->at(display_state.menu_index - 1) != nullptr) {
-    display_state.menu_list->at(display_state.menu_index - 1)
+  uint32_t &menu_index =
+      display_state.nav_stack.at(display_state.nav_depth).menu_index;
+  menu_item_list &menu_list =
+      display_state.nav_stack.at(display_state.nav_depth).list;
+
+  if (menu_index > 0 && menu_list->at(menu_index - 1) != nullptr) {
+    menu_list->at(menu_index - 1)
         ->draw(u8g2,
                MENU_TOP_PADDING + ((MENU_FRAME_HEIGHT + MENU_SPACING) * 0),
                false);
   }
   // Draw Center (current) item
-  if (display_state.menu_list->at(display_state.menu_index) != nullptr) {
-    display_state.menu_list->at(display_state.menu_index)
+  if (menu_list->at(menu_index) != nullptr) {
+    menu_list->at(menu_index)
         ->draw(u8g2,
                MENU_TOP_PADDING + ((MENU_FRAME_HEIGHT + MENU_SPACING) * 1),
                true);
   }
   // Draw bottom (next) item
-  if (display_state.menu_index + 1 < display_state.menu_list->size() &&
-      display_state.menu_list->at(display_state.menu_index + 1) != nullptr) {
-    display_state.menu_list->at(display_state.menu_index + 1)
+  if (menu_index + 1 < menu_list->size() &&
+      menu_list->at(menu_index + 1) != nullptr) {
+    menu_list->at(menu_index + 1)
         ->draw(u8g2,
                MENU_TOP_PADDING + ((MENU_FRAME_HEIGHT + MENU_SPACING) * 2),
                false);
@@ -279,7 +308,7 @@ extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
 
   // Put elements in debug stat menu
   debug_stat_menu->at(0) = std::make_shared<MenuItem>(
-      screen_label{"Return"}, kHamBridgeIconLanEnable, false, top_level_menu);
+      screen_label{"Return"}, kHamBridgeIconLanEnable, false, MenuBack{});
   // debugStatMenu->at(1) = std::make_shared<menuListObject>(menuListObject{
   //     .text = "IP Address",
   //     .item_type = MENU_ITEM_TYPE_STRING,
@@ -293,7 +322,9 @@ extern "C" void initializeU8G2(i2c_master_bus_handle_t *i2c_bus_handle) {
   debug_stat_menu->at(2) = std::make_shared<MenuItem>(
       screen_label{"Example 2"}, kHamBridgeIconLanEnable, false, 1234);
 
-  display_state.menu_list = top_level_menu;
+  display_state.nav_stack[0] =
+      NavLayer{.list = top_level_menu, .menu_index = 0};
+  display_state.nav_depth = 0;
 
   display_state.icon_list[0] = kHamBridgeIconMicEnable;
   display_state.icon_list[1] = kHamBridgeIconLanEnable;
@@ -348,45 +379,67 @@ extern "C" void screenRefreshTask(void *args __unused) {
   }
 }
 extern "C" void processIncomingInput(ButtonTypes incoming_button) {
+  uint32_t &menu_index =
+      display_state.nav_stack.at(display_state.nav_depth).menu_index;
+  menu_item_list &menu_list =
+      display_state.nav_stack.at(display_state.nav_depth).list;
+
+  std::shared_ptr<MenuItem> active_menu_item;
   // Make sure display won't draw on incomplete data
   std::unique_lock lock(display_mutex);
-  if (display_state.menu_list == nullptr) {
+  if (menu_list == nullptr) {
     // Drop event
     return;
   }
   // Handle up/increment button pressed
   switch (incoming_button) {
   case kButtonTypeIncrement:
-    if (display_state.menu_index < display_state.menu_list->size() - 1 &&
-        display_state.menu_list->at(display_state.menu_index + 1) != nullptr) {
-      display_state.menu_index++;
+    if (menu_index < menu_list->size() - 1 &&
+        menu_list->at(menu_index + 1) != nullptr) {
+      menu_index++;
     }
     break;
 
   // Handle down/decrement button pressed
   case kButtonTypeDecrement:
-    if (display_state.menu_index > 0 &&
-        display_state.menu_list->at(display_state.menu_index - 1) != nullptr) {
-      display_state.menu_index--;
+    if (menu_index > 0 && menu_list->at(menu_index - 1) != nullptr) {
+      menu_index--;
     }
     break;
 
     // Handle confirm button pressed
     // Action depends on current menu object
   case kButtonTypeConfirm:
-    std::shared_ptr<MenuItem> active_menu_item =
-        display_state.menu_list->at(display_state.menu_index);
+    active_menu_item = menu_list->at(menu_index);
 
-    std::visit(Overloaded{
-                   [&](const screen_label &) {},
-                   [&](const int &) {},
-                   [&](const float &) {},
-                   [&](const bool &) {},
-                   [&](const menu_item_list &new_list) {
-                     display_state.menu_list = new_list;
-                     display_state.menu_index = 0;
-                   },
-               },
+    std::visit(Overloaded{[&](const screen_label &) {}, [&](const int &) {},
+                          [&](const float &) {}, [&](const bool &) {},
+                          [&](const menu_item_list &new_list) {
+                            size_t &nav_depth = display_state.nav_depth;
+                            if (nav_depth < display_state.nav_stack.size()) {
+                              // Update last index on current object
+                              display_state.nav_stack.at(nav_depth).menu_index =
+                                  menu_index;
+
+                              // Increment stack
+                              nav_depth++;
+
+                              // Put new menu into stack
+                              display_state.nav_stack.at(nav_depth) = {
+                                  .list = new_list, .menu_index = 0};
+                            }
+                          },
+                          [&](const MenuBack &) {
+                            size_t &nav_depth = display_state.nav_depth;
+                            if (nav_depth > 0) {
+                              // Clear current stack item (decrement shared_ptr)
+                              display_state.nav_stack.at(nav_depth) = {
+                                  .list = nullptr, .menu_index = 0};
+
+                              // Decrement stack
+                              nav_depth--;
+                            }
+                          }},
                active_menu_item->getValue());
     break;
   }

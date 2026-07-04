@@ -14,6 +14,7 @@
 #define MENU_FRAME_HEIGHT (TEXT_HEIGHT + (2 * MENU_PADDING))
 // how many pixels the inactive menu elements are squished by:
 #define MENU_INACTIVE_SQUISH 10
+#define MENU_MAX_DEPTH 4 // How many submenus deep is allowed
 
 #ifdef __cplusplus
 extern "C" {
