@@ -11,13 +11,14 @@
 #include <memory>
 #include <vector>
 
+#include <protos/messages/audioPacket.pb.h>
+
 #include "config.h"
 #include "esp_netif_types.h"
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
 
 #include "key_cert_manager.h"
-#include "portmacro.h"
 
 // Implementation Reference:
 // https://github.com/espressif/esp-idf/blob/v6.0.1/examples/protocols/https_server/wss_server/main/wss_server_example.c
