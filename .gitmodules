@@ -4,3 +4,6 @@
 [submodule "components/u8g2-hal-esp-idf"]
 	path = components/u8g2-hal-esp-idf
 	url = https://github.com/mkfrey/u8g2-hal-esp-idf.git
+[submodule "components/ham-bridge-protos"]
+	path = components/ham-bridge-protos
+	url = ssh://git@zindswini.com:2222/Zindswini/ham-bridge-protos.git

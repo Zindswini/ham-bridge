@@ -292,9 +292,9 @@ void wssServerTask(void *args __unused) {
 
   ESP_LOGI(tag, "Registered connect/disconnect handlers");
 
+  wssServerSendMessages();
+
   while (true) {
     vTaskDelay(portMAX_DELAY);
   }
-
-  // wssServerSendMessages();
 }
