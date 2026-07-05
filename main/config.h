@@ -37,4 +37,8 @@
 #define NVS_TLS_CERT_KEY "cert_val"
 #define NVS_TLS_KEY_KEY "key_val"
 
+// Audio Buffer Settings
+#define BUFFER_SLOTS 6
+#define BUFFER_SLOT_BYTES 4096
+
 #endif

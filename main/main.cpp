@@ -48,7 +48,7 @@ extern "C" void app_main(void) {   // NOLINT(readability-identifier-naming)
   unsigned major_rev = chip_info.revision / 100;
   unsigned minor_rev = chip_info.revision % 100;
   ESP_LOGI(tag, "silicon revision v%d.%d, ", major_rev, minor_rev);
-  if (esp_flash_get_size(NULL, &flash_size) != ESP_OK) {
+  if (esp_flash_get_size(nullptr, &flash_size) != ESP_OK) {
     ESP_LOGI(tag, "Get flash size failed");
     return;
   }
@@ -103,6 +103,11 @@ extern "C" void app_main(void) {   // NOLINT(readability-identifier-naming)
   es8388CodecInit(i2c_bus_handle);
   ESP_LOGI(tag, "Initialized I2S Codec");
 
+  ESP_LOGI(tag, "Initializing PCM Queues");
+  drawLoadingScreen("Initializing PCM Queues");
+  ESP_ERROR_CHECK(initializeQueue());
+  ESP_LOGI(tag, "Initialized PCM Queues");
+
   ESP_LOGI(tag, "Initializing Ethernet Driver");
   drawLoadingScreen("Initializing Eth Driver");
   setupEthernet();
@@ -125,21 +130,26 @@ extern "C" void app_main(void) {   // NOLINT(readability-identifier-naming)
   // Start FreeRTOS Tasks
   drawLoadingScreen("Starting Tasks");
   ESP_LOGI(tag, "Starting music task");
-  xTaskCreate(playI2sMusic, "i2s_music", 4096, NULL, 3, nullptr);
+  xTaskCreate(i2SWriteTask, "i2s_write_task", 4096, nullptr, 3, nullptr);
   ESP_LOGI(tag, "Created music task");
 
+  ESP_LOGI(tag, "Starting I2S Read Task");
+  xTaskCreate(i2SReadTask, "i2S_read_task", 4096, nullptr, 8, nullptr);
+  ESP_LOGI(tag, "Created I2S Read Task");
+
   ESP_LOGI(tag, "Starting Input Handler Task");
-  xTaskCreate(processInputsTask, "process_inputs", 4096, NULL, 5, nullptr);
+  xTaskCreate(processInputsTask, "process_inputs", 4096, nullptr, 5, nullptr);
   ESP_LOGI(tag, "Created Input Handler Task");
 
   ESP_LOGI(tag, "Starting Screen Refresh Task");
-  xTaskCreate(screenRefreshTask, "screen_refresh", 4096, NULL, 8, nullptr);
+  xTaskCreate(screenRefreshTask, "screen_refresh", 4096, nullptr, 8, nullptr);
   ESP_LOGI(tag, "Created Screen Refresh Task");
 
   ESP_LOGI(tag, "Starting Web Server Task");
-  xTaskCreate(wssServerTask, "wss_web_server", 8192, NULL, 8, nullptr);
+  xTaskCreate(wssServerTask, "wss_web_server", 8192, nullptr, 8, nullptr);
   ESP_LOGI(tag, "Created Web Server Task");
 
+  // Periodically print out timing and task debug info
   while (true) {
     auto out_buf = std::make_unique<std::array<char, 2048>>();
 

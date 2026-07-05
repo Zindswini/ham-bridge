@@ -4,6 +4,7 @@
 #include "driver/i2c_types.h"
 #include "esp_err.h"
 #include <cstddef>
+#include <freertos/FreeRTOS.h>
 #include <span>
 
 // Create reference to PCM data provided by linker
@@ -21,9 +22,14 @@ inline std::span<const std::byte> musicPcm() {
 extern "C" {
 #endif
 
+extern QueueHandle_t queue_filled;
+extern QueueHandle_t queue_free;
+
+esp_err_t initializeQueue();
 esp_err_t i2sDriverInit(void);
 esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle);
-void playI2sMusic(void *args);
+void i2SWriteTask(void *args);
+void i2SReadTask(void *args);
 
 #ifdef __cplusplus
 }

@@ -2,17 +2,24 @@
 #include "config.h"
 
 #include "driver/i2c_types.h"
+#include "driver/i2s_common.h"
 #include "driver/i2s_types.h"
+#include "esp_codec_dev_types.h"
+#include "esp_err.h"
 #include "esp_log.h"
+#include <array>
 #include <cstddef>
-#include <cstdio>
+#include <cstdint>
+#include <cstdlib>
 #include <freertos/FreeRTOS.h>
-#include <sys/cdefs.h>
 
 // Espressif I2S Codec Library
 #include "driver/i2s_std.h"
 #include "esp_codec_dev.h"
 #include "esp_codec_dev_defaults.h"
+#include "freertos/idf_additions.h"
+#include "freertos/projdefs.h"
+#include "portmacro.h"
 #include "soc/clk_tree_defs.h"
 
 // I2S Handles
@@ -20,6 +27,25 @@ static i2s_chan_handle_t tx_handle = nullptr;
 static i2s_chan_handle_t rx_handle = nullptr;
 
 static const char *tag = "I2S_HANDLER";
+
+// Struct for referencing buffers with actual size
+struct Chunk {
+  std::span<uint8_t> storage;
+  size_t len = 0;
+  [[nodiscard]] std::span<uint8_t> used() const { return storage.first(len); }
+};
+
+// Allocate static buffers
+static std::array<std::array<uint8_t, BUFFER_SLOT_BYTES>, BUFFER_SLOTS> pool;
+static std::array<Chunk, BUFFER_SLOTS> chunks;
+
+// Allocate static queues
+static StaticQueue_t queue_free_chunks_ctrl;
+static StaticQueue_t queue_filled_chunks_ctrl;
+static std::array<uint8_t, BUFFER_SLOTS * sizeof(Chunk *)> queue_free_store;
+static std::array<uint8_t, BUFFER_SLOTS * sizeof(Chunk *)> queue_filled_store;
+QueueHandle_t queue_free = nullptr;
+QueueHandle_t queue_filled = nullptr;
 
 esp_err_t i2sDriverInit(void) {
   i2s_chan_config_t chan_cfg =
@@ -50,12 +76,12 @@ esp_err_t i2sDriverInit(void) {
 
   ESP_LOGD(tag, "Initializing I2S Channels");
   ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_handle, &std_cfg));
-  // ESP_ERROR_CHECK(i2s_channel_init_std_mode(rx_handle, &std_cfg));
+  ESP_ERROR_CHECK(i2s_channel_init_std_mode(rx_handle, &std_cfg));
   ESP_LOGD(tag, "Initialized I2S Channels");
 
   ESP_LOGD(tag, "Enabling I2S Channels");
   ESP_ERROR_CHECK(i2s_channel_enable(tx_handle));
-  // ESP_ERROR_CHECK(i2s_channel_enable(rx_handle));
+  ESP_ERROR_CHECK(i2s_channel_enable(rx_handle));
   ESP_LOGD(tag, "Enabled I2S Channels");
   return ESP_OK;
 }
@@ -117,7 +143,7 @@ esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle) {
 
   ESP_LOGD(tag, "Initializing I2S Device Config");
   esp_codec_dev_cfg_t dev_cfg = {
-      .dev_type = ESP_CODEC_DEV_TYPE_OUT,
+      .dev_type = ESP_CODEC_DEV_TYPE_IN_OUT,
       .codec_if = es8388_if,
       .data_if = data_if,
   };
@@ -145,11 +171,35 @@ esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle) {
     ESP_LOGE(tag, "set output volume failed");
     return ESP_FAIL;
   }
+
+  if (esp_codec_dev_set_in_gain(codec_handle, 0) != ESP_CODEC_DEV_OK) {
+    ESP_LOGE(tag, "set input volume failed");
+    return ESP_FAIL;
+  }
+
   ESP_LOGD(tag, "Initialized I2S Sample Config");
   return ESP_OK;
 }
 
-void playI2sMusic(void *args __unused) {
+esp_err_t initializeQueue() {
+  // Setup the queues using the static memory
+  queue_free =
+      xQueueCreateStatic(BUFFER_SLOTS, sizeof(Chunk *), queue_free_store.data(),
+                         &queue_free_chunks_ctrl);
+  queue_filled =
+      xQueueCreateStatic(BUFFER_SLOTS, sizeof(Chunk *),
+                         queue_filled_store.data(), &queue_filled_chunks_ctrl);
+
+  // Initialize free queue with valid Chunk objects
+  for (size_t i = 0; i < BUFFER_SLOTS; i++) {
+    Chunk *chunk = &(chunks.at(i));
+    chunk->storage = std::span<uint8_t>{pool.at(i)};
+    xQueueSend(queue_free, static_cast<void *>(&chunk), 0);
+  }
+  return ESP_OK;
+}
+
+void i2SWriteTask(void *args __unused) {
   esp_err_t status = ESP_OK;
   size_t bytes_written = 0;
 
@@ -168,5 +218,45 @@ void playI2sMusic(void *args __unused) {
       abort();
     }
     // vTaskDelay(pdMS_TO_TICKS(1000));
+  }
+}
+
+void i2SReadTask(void *args __unused) {
+  // TODO(Zindswini): Encode w/ ADPCM before submitting to queue
+
+  while (true) {
+    // Get chunk from queue of free chunks
+    Chunk *chunk = nullptr;
+    ESP_LOGD(tag, "Attempting to recieve from queue");
+    if (xQueueReceive(queue_free, static_cast<void *>(&chunk), portMAX_DELAY) !=
+        pdTRUE) {
+      continue;
+    }
+    ESP_LOGD(tag, "Addr to write: %p", chunk->storage.data());
+
+    // Read from I2S DMA buffer into chunk we got
+    esp_err_t status = ESP_OK;
+    size_t bytes_read = 0;
+    status =
+        i2s_channel_read(rx_handle, chunk->storage.data(),
+                         chunk->storage.size(), &bytes_read, portMAX_DELAY);
+
+    if (status != ESP_OK) {
+      ESP_LOGE(tag, "I2S Read failed with reason: %s", esp_err_to_name(status));
+      abort();
+    }
+    if (bytes_read > 0) {
+      ESP_LOGI(tag, "I2S Read Successful, %d bytes read", bytes_read);
+      chunk->len = bytes_read;
+      xQueueSend(queue_filled, static_cast<void *>(&chunk), portMAX_DELAY);
+    } else {
+      ESP_LOGE(tag, "I2S Read Failed");
+
+      // Data is invalid, put back into free queue to be overwritten
+      xQueueSend(queue_free, static_cast<void *>(&chunk), portMAX_DELAY);
+
+      // Backoff to prevent tight loop
+      vTaskDelay(pdMS_TO_TICKS(400));
+    }
   }
 }
