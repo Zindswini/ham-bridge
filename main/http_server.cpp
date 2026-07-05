@@ -9,8 +9,11 @@
 #include <esp_log.h>
 #include <esp_system.h>
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include <vector>
 
+#include <pb_encode.h>
 #include <protos/messages/audioPacket.pb.h>
 
 #include "config.h"
@@ -18,13 +21,18 @@
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
 
+#include "i2s_handler.h"
 #include "key_cert_manager.h"
+#include "portmacro.h"
 
 // Implementation Reference:
 // https://github.com/espressif/esp-idf/blob/v6.0.1/examples/protocols/https_server/wss_server/main/wss_server_example.c
 
 static const char *tag = "HTTPS_WSS_SERVER";
 static httpd_handle_t server = nullptr;
+
+static std::array<uint8_t, 8192> proto_stream_buf{};
+std::shared_mutex proto_stream_mutex;
 
 static esp_err_t wsHandler(httpd_req_t *req) {
   if (req->method == HTTP_GET) {
@@ -110,6 +118,43 @@ static const httpd_uri_t kWsUriConf = {
     .handle_ws_control_frames = false,
     .supported_subprotocol = nullptr,
 };
+
+static void sendAudioPacket(void *arg) {
+  // Lock static buffer
+  // std::unique_lock lock(proto_stream_mutex);
+
+  // pb_ostream_t stream = pb_ostream_from_buffer(proto_stream_buf.data(),
+  // proto_stream_buf.size());
+
+  // TODO(Zindswini): Create Protobuf metadata and object
+
+  // Take ownership of data at arg (cleaned up automatically)
+  auto resp_arg =
+      std::unique_ptr<AsyncRespArg>(static_cast<AsyncRespArg *>(arg));
+
+  Chunk *chunk = nullptr;
+  xQueueReceive(queue_filled, static_cast<void *>(&chunk), portMAX_DELAY);
+
+  httpd_ws_frame_t ws_pkt = {
+      .final = true,
+      .fragmented = false,
+      .type = HTTPD_WS_TYPE_BINARY,
+      .payload = chunk->used().data(),
+      .len = chunk->used().size(),
+  };
+
+  esp_err_t ret =
+      httpd_ws_send_frame_async(resp_arg->hd, resp_arg->fd, &ws_pkt);
+  if (ret != ESP_OK) {
+    ESP_LOGE(tag, "Failed to send websocket frame! ret = %d", ret);
+    // Put chunk back into used queue
+    xQueueSend(queue_filled, static_cast<void *>(&chunk), portMAX_DELAY);
+  }
+
+  // Successful send, put into free queue
+  chunk->len = 0;
+  xQueueSend(queue_free, static_cast<void *>(&chunk), portMAX_DELAY);
+}
 
 static void sendHello(void *arg) {
   std::string data_string = std::string("Hello Client!");
@@ -237,12 +282,11 @@ static void wssServerSendMessages() {
   bool send_messages = true;
 
   while (send_messages) {
-    vTaskDelay(pdMS_TO_TICKS(5000));
     if (server == nullptr) {
       ESP_LOGD(tag, "SendMessages looping, server ref is nullptr");
       continue; // Server might not be created
     }
-    ESP_LOGI(tag, "Sending messages to all http clients");
+    // ESP_LOGI(tag, "Sending messages to all http clients");
 
     size_t clients = MAX_HTTP_CLIENTS;
     std::array<int, MAX_HTTP_CLIENTS> client_fds{};
@@ -262,12 +306,13 @@ static void wssServerSendMessages() {
           resp_arg->fd = sock;
 
           esp_err_t ret =
-              httpd_queue_work(resp_arg->hd, sendHello, resp_arg.get());
+              httpd_queue_work(resp_arg->hd, sendAudioPacket, resp_arg.get());
 
           if (ret == ESP_OK) {
             // httpd will call delete on pointer.
             // Release here to avoid double free.
             resp_arg.release(); // NOLINT(bugprone-unused-return-value)
+            ESP_LOGD(tag, "Successfully queued audioPacket work to httpd");
           } else {
             ESP_LOGE(tag, "httpd_queue_work failed");
             send_messages = false;
@@ -276,6 +321,7 @@ static void wssServerSendMessages() {
       }
     } else {
       ESP_LOGE(tag, "httpd_get_client_list failed!");
+      vTaskDelay(pdMS_TO_TICKS(50));
       return;
     }
   }

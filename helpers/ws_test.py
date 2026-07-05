@@ -1,5 +1,6 @@
 import pathlib
 import ssl
+import sys
 
 from websockets.sync.client import connect
 
@@ -12,12 +13,16 @@ bridge_ip = "10.42.0.207"
 
 def hello():
     # with connect(f"wss://{bridge_ip}/ws", ssl=ssl_context, ping_timeout=5, close_timeout=5) as websocket:
-    with connect(f"ws://{bridge_ip}/ws", ping_timeout=5, close_timeout=5) as websocket:
-        websocket.send("Hello world!")
-        print("Sent Hello World")
+    # with connect(f"ws://{bridge_ip}/ws", ping_timeout=5, close_timeout=5) as websocket:
+    with connect(f"ws://{bridge_ip}/ws", ping_timeout=None, close_timeout=None) as websocket:
+        # websocket.send("Hello world!")
+        # print("Sent Hello World")
 
         while True:
-            message = websocket.recv()
-            print(f"Received {message}")
+            
+            sys.stdout.buffer.write(websocket.recv(timeout=None, decode=False));
+            sys.stdout.buffer.flush();
+            
+            # print(f"Received {message}")
 
 hello()

@@ -28,13 +28,6 @@ static i2s_chan_handle_t rx_handle = nullptr;
 
 static const char *tag = "I2S_HANDLER";
 
-// Struct for referencing buffers with actual size
-struct Chunk {
-  std::span<uint8_t> storage;
-  size_t len = 0;
-  [[nodiscard]] std::span<uint8_t> used() const { return storage.first(len); }
-};
-
 // Allocate static buffers
 static std::array<std::array<uint8_t, BUFFER_SLOT_BYTES>, BUFFER_SLOTS> pool;
 static std::array<Chunk, BUFFER_SLOTS> chunks;

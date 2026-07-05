@@ -39,6 +39,6 @@
 
 // Audio Buffer Settings
 #define BUFFER_SLOTS 6
-#define BUFFER_SLOT_BYTES 4096
+#define BUFFER_SLOT_BYTES 8192
 
 #endif

@@ -22,6 +22,13 @@ inline std::span<const std::byte> musicPcm() {
 extern "C" {
 #endif
 
+// Struct for referencing buffers with actual size
+struct Chunk {
+  std::span<uint8_t> storage;
+  size_t len = 0;
+  [[nodiscard]] std::span<uint8_t> used() const { return storage.first(len); }
+};
+
 extern QueueHandle_t queue_filled;
 extern QueueHandle_t queue_free;
 
