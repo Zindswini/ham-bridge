@@ -284,14 +284,21 @@ static void wssServerSendMessages() {
   while (send_messages) {
     if (server == nullptr) {
       ESP_LOGD(tag, "SendMessages looping, server ref is nullptr");
-      continue; // Server might not be created
+      // Prevent tight loop
+      vTaskDelay(pdMS_TO_TICKS(500));
+      continue;
     }
-    // ESP_LOGI(tag, "Sending messages to all http clients");
 
     size_t clients = MAX_HTTP_CLIENTS;
     std::array<int, MAX_HTTP_CLIENTS> client_fds{};
 
     if (httpd_get_client_list(server, &clients, client_fds.data()) == ESP_OK) {
+      if (clients == 0) {
+        // Long delay and loop
+        vTaskDelay(pdMS_TO_TICKS(100));
+        continue;
+      }
+
       for (size_t i = 0; i < clients; i++) {
         int sock = client_fds.at(i);
 
@@ -321,9 +328,11 @@ static void wssServerSendMessages() {
       }
     } else {
       ESP_LOGE(tag, "httpd_get_client_list failed!");
-      vTaskDelay(pdMS_TO_TICKS(50));
       return;
     }
+
+    // Prevent tight loop
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
 

@@ -19,6 +19,7 @@
 #include "esp_codec_dev_defaults.h"
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
+#include "hal/i2s_types.h"
 #include "portmacro.h"
 #include "soc/clk_tree_defs.h"
 
@@ -48,7 +49,7 @@ esp_err_t i2sDriverInit(void) {
 
   i2s_std_config_t std_cfg = {
       .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(I2S_SAMPLE_RATE),
-      .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
+      .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_BIT_WIDTH,
                                                       I2S_SLOT_MODE_STEREO),
       .gpio_cfg =
           {
@@ -96,10 +97,12 @@ esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle) {
   ESP_LOGD(tag, "Initialized I2S I2C Config");
 
   ESP_LOGD(tag, "Initializing I2S Config");
-  audio_codec_i2s_cfg_t i2s_cfg = {.port = I2S_NUM_0,
-                                   .rx_handle = rx_handle,
-                                   .tx_handle = tx_handle,
-                                   .clk_src = I2S_CLK_SRC_DEFAULT};
+  audio_codec_i2s_cfg_t i2s_cfg = {
+      .port = I2S_NUM_0,
+      .rx_handle = rx_handle,
+      .tx_handle = tx_handle,
+      .clk_src = I2S_CLK_SRC_DEFAULT,
+  };
   const audio_codec_data_if_t *data_if = audio_codec_new_i2s_data(&i2s_cfg);
   if (data_if == nullptr) {
     ESP_LOGE(tag, "Failed to get i2s data interface!");
@@ -165,7 +168,7 @@ esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle) {
     return ESP_FAIL;
   }
 
-  if (esp_codec_dev_set_in_gain(codec_handle, 0) != ESP_CODEC_DEV_OK) {
+  if (esp_codec_dev_set_in_gain(codec_handle, 24) != ESP_CODEC_DEV_OK) {
     ESP_LOGE(tag, "set input volume failed");
     return ESP_FAIL;
   }
