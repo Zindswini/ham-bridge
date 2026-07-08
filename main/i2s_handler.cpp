@@ -4,7 +4,6 @@
 #include "driver/i2c_types.h"
 #include "driver/i2s_common.h"
 #include "driver/i2s_types.h"
-#include "esp_codec_dev_types.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include <array>
@@ -17,6 +16,7 @@
 #include "driver/i2s_std.h"
 #include "esp_codec_dev.h"
 #include "esp_codec_dev_defaults.h"
+#include "esp_codec_dev_types.h"
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
 #include "hal/i2s_types.h"
@@ -167,11 +167,26 @@ esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle) {
   }
 
   if (esp_codec_dev_set_out_vol(codec_handle, 100) != ESP_CODEC_DEV_OK) {
-    ESP_LOGE(tag, "set output volume failed");
+    ESP_LOGE(tag, "set output digital gain failed");
     return ESP_FAIL;
   }
 
-  if (esp_codec_dev_set_in_gain(codec_handle, 24) != ESP_CODEC_DEV_OK) {
+  // Set LOUT DAC Gain to 0db (Previously set to -30db in open func)
+  esp_err_t ret = ESP_CODEC_DEV_OK;
+  int val_to_write = 0x1E; // 0db
+
+  // Set Register ES8388_DACCONTROL26 (0x30) (LOUT2 Gain) = 0dB
+  ret |= ctrl_if->write_reg(ctrl_if, 0x30, 1, &val_to_write, 1);
+
+  // Set Register ES8388_DACCONTROL27 (0x31) (LOUT2 Gain) = 0dB
+  ret |= ctrl_if->write_reg(ctrl_if, 0x31, 1, &val_to_write, 1);
+
+  if (ret != ESP_CODEC_DEV_OK) {
+    ESP_LOGE(tag, "set output physical gain failed: Code %d", ret);
+    return ESP_FAIL;
+  }
+
+  if (esp_codec_dev_set_in_gain(codec_handle, 12) != ESP_CODEC_DEV_OK) {
     ESP_LOGE(tag, "set input volume failed");
     return ESP_FAIL;
   }
