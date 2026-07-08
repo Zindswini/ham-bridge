@@ -101,7 +101,7 @@ extern "C" void app_main(void) {   // NOLINT(readability-identifier-naming)
 
   ESP_LOGI(tag, "Initializing I2S Codec");
   drawLoadingScreen("Initializing I2S Codec");
-  es8388CodecInit(i2c_bus_handle);
+  ESP_ERROR_CHECK(es8388CodecInit(i2c_bus_handle));
   ESP_LOGI(tag, "Initialized I2S Codec");
 
   ESP_LOGI(tag, "Initializing PCM Queues");

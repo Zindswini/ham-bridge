@@ -30,7 +30,9 @@ static i2s_chan_handle_t rx_handle = nullptr;
 static const char *tag = "I2S_HANDLER";
 
 // Allocate static buffers
-static std::array<std::array<uint8_t, BUFFER_SLOT_BYTES>, BUFFER_SLOTS> pool;
+EXT_RAM_BSS_ATTR static std::array<std::array<uint8_t, BUFFER_SLOT_BYTES>,
+                                   BUFFER_SLOTS>
+    pool;
 static std::array<Chunk, BUFFER_SLOTS> chunks;
 
 // Allocate static queues
@@ -151,12 +153,13 @@ esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle) {
   ESP_LOGD(tag, "Initialized I2S Device Config");
 
   ESP_LOGD(tag, "Initializing I2S Sample Config");
-  esp_codec_dev_sample_info_t sample_cfg = {.bits_per_sample =
-                                                I2S_DATA_BIT_WIDTH_16BIT,
-                                            .channel = 2,
-                                            .channel_mask = 0x03,
-                                            .sample_rate = I2S_SAMPLE_RATE,
-                                            .mclk_multiple = I2S_MCLK_MULITPLE};
+  esp_codec_dev_sample_info_t sample_cfg = {
+      .bits_per_sample = I2S_BIT_WIDTH,
+      .channel = 2,
+      .channel_mask = 0x03,
+      .sample_rate = I2S_SAMPLE_RATE,
+      .mclk_multiple = I2S_MCLK_MULITPLE,
+  };
 
   if (esp_codec_dev_open(codec_handle, &sample_cfg) != ESP_CODEC_DEV_OK) {
     ESP_LOGE(tag, "Open codec device failed");
