@@ -186,6 +186,15 @@ esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle) {
     return ESP_FAIL;
   }
 
+  // Set input to LINE2
+  // val_to_write = 0x50;
+  // ret |= ctrl_if->write_reg(ctrl_if, 0x0a, 1, &val_to_write, 1);
+
+  // if (ret != ESP_CODEC_DEV_OK) {
+  //   ESP_LOGE(tag, "set input select Line2 failed: Code %d", ret);
+  //   return ESP_FAIL;
+  // }
+
   if (esp_codec_dev_set_in_gain(codec_handle, 12) != ESP_CODEC_DEV_OK) {
     ESP_LOGE(tag, "set input volume failed");
     return ESP_FAIL;
