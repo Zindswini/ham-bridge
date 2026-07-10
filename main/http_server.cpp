@@ -133,27 +133,42 @@ static void sendAudioPacket(void *arg) {
       std::unique_ptr<AsyncRespArg>(static_cast<AsyncRespArg *>(arg));
 
   Chunk *chunk = nullptr;
-  xQueueReceive(queue_filled, static_cast<void *>(&chunk), portMAX_DELAY);
+  if (xQueueReceive(queue_filled, static_cast<void *>(&chunk), 0) != pdTRUE) {
+    ESP_LOGW(tag, "No filled chunk in queue, having to wait on I2S!");
+    vTaskDelay(pdMS_TO_TICKS(100));
+    return;
+  }
 
   httpd_ws_frame_t ws_pkt = {
       .final = true,
       .fragmented = false,
       .type = HTTPD_WS_TYPE_BINARY,
       .payload = chunk->used().data(),
-      .len = chunk->used().size(),
+      .len = chunk->len,
   };
 
   esp_err_t ret =
       httpd_ws_send_frame_async(resp_arg->hd, resp_arg->fd, &ws_pkt);
+
   if (ret != ESP_OK) {
+    // Put chunk back into used queue for re-sending
     ESP_LOGE(tag, "Failed to send websocket frame! ret = %d", ret);
-    // Put chunk back into used queue
     xQueueSend(queue_filled, static_cast<void *>(&chunk), portMAX_DELAY);
+  } else {
+    ESP_LOGI(tag, "Sent WSS Message of chunk with addr %p and size %d",
+             chunk->storage.data(), chunk->len);
   }
 
   // Successful send, put into free queue
   chunk->len = 0;
-  xQueueSend(queue_free, static_cast<void *>(&chunk), portMAX_DELAY);
+  if (xQueueSend(queue_free, static_cast<void *>(&chunk), 0) != pdTRUE) {
+    ESP_LOGW(tag, "No free chunk left, I2S must be too slow!");
+    xQueueSend(queue_free, static_cast<void *>(&chunk),
+               portMAX_DELAY); // So we don't lose access to a chunk
+  } else {
+    ESP_LOGD(tag, "Returned chunk with addr %p to free queue",
+             chunk->storage.data());
+  }
 }
 
 static void sendHello(void *arg) {

@@ -174,6 +174,7 @@ esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle) {
   // Set LOUT DAC Gain to 0db (Previously set to -30db in open func)
   esp_err_t ret = ESP_CODEC_DEV_OK;
   int val_to_write = 0x1E; // 0db
+  // int val_to_write = 0x0F; // -15db
 
   // Set Register ES8388_DACCONTROL26 (0x30) (LOUT2 Gain) = 0dB
   ret |= ctrl_if->write_reg(ctrl_if, 0x30, 1, &val_to_write, 1);
@@ -186,16 +187,16 @@ esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle) {
     return ESP_FAIL;
   }
 
-  // Set input to LINE2
+  // Set input to LINE2 (IQ)
   // val_to_write = 0x50;
   // ret |= ctrl_if->write_reg(ctrl_if, 0x0a, 1, &val_to_write, 1);
 
-  // if (ret != ESP_CODEC_DEV_OK) {
-  //   ESP_LOGE(tag, "set input select Line2 failed: Code %d", ret);
-  //   return ESP_FAIL;
-  // }
+  if (ret != ESP_CODEC_DEV_OK) {
+    ESP_LOGE(tag, "set input select Line2 failed: Code %d", ret);
+    return ESP_FAIL;
+  }
 
-  if (esp_codec_dev_set_in_gain(codec_handle, 12) != ESP_CODEC_DEV_OK) {
+  if (esp_codec_dev_set_in_gain(codec_handle, 8) != ESP_CODEC_DEV_OK) {
     ESP_LOGE(tag, "set input volume failed");
     return ESP_FAIL;
   }
@@ -250,12 +251,13 @@ void i2SReadTask(void *args __unused) {
   while (true) {
     // Get chunk from queue of free chunks
     Chunk *chunk = nullptr;
-    ESP_LOGD(tag, "Attempting to recieve from queue");
-    if (xQueueReceive(queue_free, static_cast<void *>(&chunk), portMAX_DELAY) !=
-        pdTRUE) {
+    ESP_LOGD(tag, "Attempting to recieve from free queue");
+    if (xQueueReceive(queue_free, static_cast<void *>(&chunk), 0) != pdTRUE) {
+      ESP_LOGW(tag, "No chunk in free queue! HTTP web side must be too slow!");
+      vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
-    ESP_LOGD(tag, "Addr to write: %p", chunk->storage.data());
+    ESP_LOGD(tag, "Got free chunk with base addr: %p", chunk->storage.data());
 
     // Read from I2S DMA buffer into chunk we got
     esp_err_t status = ESP_OK;
@@ -269,9 +271,14 @@ void i2SReadTask(void *args __unused) {
       abort();
     }
     if (bytes_read > 0) {
-      ESP_LOGI(tag, "I2S Read Successful, %d bytes read", bytes_read);
+      ESP_LOGI(tag, "I2S Read Successful, %d bytes read to addr %p", bytes_read,
+               chunk->storage.data());
       chunk->len = bytes_read;
-      xQueueSend(queue_filled, static_cast<void *>(&chunk), portMAX_DELAY);
+      if (xQueueSend(queue_filled, static_cast<void *>(&chunk), 0) != pdTRUE) {
+        ESP_LOGE(tag, "Failed to put chunk into filled queue!");
+      } else {
+        ESP_LOGD(tag, "Put chunk in filled queue");
+      }
     } else {
       ESP_LOGE(tag, "I2S Read Failed");
 

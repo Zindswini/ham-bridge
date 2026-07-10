@@ -135,7 +135,7 @@ extern "C" void app_main(void) {   // NOLINT(readability-identifier-naming)
   ESP_LOGI(tag, "Created music task");
 
   ESP_LOGI(tag, "Starting I2S Read Task");
-  xTaskCreate(i2SReadTask, "i2S_read_task", 4096, nullptr, 8, nullptr);
+  xTaskCreate(i2SReadTask, "i2s_read_task", 4096, nullptr, 8, nullptr);
   ESP_LOGI(tag, "Created I2S Read Task");
 
   ESP_LOGI(tag, "Starting Input Handler Task");
@@ -150,7 +150,8 @@ extern "C" void app_main(void) {   // NOLINT(readability-identifier-naming)
   xTaskCreate(wssServerTask, "wss_web_server", 8192, nullptr, 8, nullptr);
   ESP_LOGI(tag, "Created Web Server Task");
 
-  esp_log_level_set("*", ESP_LOG_INFO);
+  esp_log_level_set("w5500.mac", ESP_LOG_INFO);
+  esp_log_level_set("vfs_calls", ESP_LOG_INFO);
 
   // Periodically print out timing and task debug info
   while (true) {

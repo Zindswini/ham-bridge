@@ -18,10 +18,9 @@
 #define VCC_VOLTAGE 3.3F
 
 // I2S Global Sample Rate
-#define I2S_SAMPLE_RATE 44100
+#define I2S_SAMPLE_RATE 96000
 #define I2S_BIT_WIDTH I2S_DATA_BIT_WIDTH_16BIT
 #define I2S_MCLK_MULITPLE I2S_MCLK_MULTIPLE_256
-
 // Front Interface Button Pins
 #define INCREMENT_BUTTON_PIN GPIO_NUM_38
 #define DECREMENT_BUTTON_PIN GPIO_NUM_40
@@ -39,7 +38,7 @@
 #define NVS_TLS_KEY_KEY "key_val"
 
 // Audio Buffer Settings
-#define BUFFER_SLOTS 6
+#define BUFFER_SLOTS 3
 #define BUFFER_SLOT_BYTES (1024 * 24)
 
 #endif
