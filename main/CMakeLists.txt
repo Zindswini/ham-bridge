@@ -1,7 +1,7 @@
 file(GLOB_RECURSE SOURCES *.c *.cpp)
 idf_component_register(SRCS ${SOURCES}
                        PRIV_REQUIRES spi_flash
-                       INCLUDE_DIRS "."
+                       INCLUDE_DIRS "./include"
                        REQUIRES driver esp_driver_i2c esp_driver_i2s esp_driver_gpio esp_https_server esp_timer nvs_flash esp_eth esp_netif u8g2 u8g2-hal-esp-idf ham-bridge-protos
                        EMBED_FILES "rick.pcm")
 
