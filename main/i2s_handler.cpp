@@ -20,6 +20,7 @@
 #include "freertos/idf_additions.h"
 #include "freertos/projdefs.h"
 #include "hal/i2s_types.h"
+#include "http_server.h"
 #include "portmacro.h"
 #include "soc/clk_tree_defs.h"
 
@@ -249,6 +250,13 @@ void i2SReadTask(void *args __unused) {
   // TODO(Zindswini): Encode w/ ADPCM before submitting to queue
 
   while (true) {
+    // Make sure server is up
+    if (!checkServerUp()) {
+      ESP_LOGV(tag, "HTTP server not up, not writing i2s data");
+      vTaskDelay(pdMS_TO_TICKS(100));
+      continue;
+    }
+
     // Get chunk from queue of free chunks
     Chunk *chunk = nullptr;
     ESP_LOGD(tag, "Attempting to recieve from free queue");

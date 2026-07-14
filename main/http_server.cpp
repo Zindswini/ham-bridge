@@ -34,6 +34,8 @@ static httpd_handle_t server = nullptr;
 static std::array<uint8_t, 8192> proto_stream_buf{};
 std::shared_mutex proto_stream_mutex;
 
+bool checkServerUp() { return server != nullptr; }
+
 static esp_err_t wsHandler(httpd_req_t *req) {
   if (req->method == HTTP_GET) {
     ESP_LOGI(tag, "Handshake done, new websocket connection opened");
@@ -298,7 +300,7 @@ static void wssServerSendMessages() {
 
   while (send_messages) {
     if (server == nullptr) {
-      ESP_LOGD(tag, "SendMessages looping, server ref is nullptr");
+      ESP_LOGV(tag, "SendMessages looping, server ref is nullptr");
       // Prevent tight loop
       vTaskDelay(pdMS_TO_TICKS(500));
       continue;

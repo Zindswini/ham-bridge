@@ -150,6 +150,7 @@ extern "C" void app_main(void) {   // NOLINT(readability-identifier-naming)
   xTaskCreate(wssServerTask, "wss_web_server", 8192, nullptr, 8, nullptr);
   ESP_LOGI(tag, "Created Web Server Task");
 
+  // Quiet some log messages at debug level
   esp_log_level_set("w5500.mac", ESP_LOG_INFO);
   esp_log_level_set("vfs_calls", ESP_LOG_INFO);
 

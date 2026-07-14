@@ -13,6 +13,7 @@ extern "C" {
 #endif
 
 void wssServerTask(void *args);
+bool checkServerUp();
 
 #ifdef __cplusplus
 }
