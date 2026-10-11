@@ -14,7 +14,7 @@
 #include <vector>
 
 #include <pb_encode.h>
-#include <protos/messages/audioPacket.pb.h>
+// #include <protos/messages/audioPacket.pb.h>
 
 #include "config.h"
 #include "esp_netif_types.h"

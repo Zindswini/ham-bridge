@@ -90,6 +90,7 @@ esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle) {
       .port = I2C_NUM_0,
       .addr = ES8388_CODEC_DEFAULT_ADDR,
       .bus_handle = i2c_bus_handle,
+      .clock_speed_hz = I2S_SAMPLE_RATE,
   };
   const audio_codec_ctrl_if_t *ctrl_if = audio_codec_new_i2c_ctrl(&i2s_i2c_cfg);
   if (ctrl_if == nullptr) {
