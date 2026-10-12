@@ -1,28 +1,33 @@
 #include "i2s_handler.h"
-#include "config.h"
 
-#include "driver/i2c_types.h"
-#include "driver/i2s_common.h"
-#include "driver/i2s_types.h"
-#include "esp_err.h"
-#include "esp_log.h"
+// Standard Library
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
-#include <freertos/FreeRTOS.h>
 
-// Espressif I2S Codec Library
-#include "driver/i2s_std.h"
+// ESP-IDF
+#include <driver/i2c_types.h>
+#include <driver/i2s_common.h>
+#include <driver/i2s_std.h>
+#include <driver/i2s_types.h>
+#include <esp_err.h>
+#include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/idf_additions.h>
+#include <freertos/projdefs.h>
+#include <hal/i2s_types.h>
+#include <portmacro.h>
+#include <soc/clk_tree_defs.h>
+
+// External Components
 #include "esp_codec_dev.h"
 #include "esp_codec_dev_defaults.h"
 #include "esp_codec_dev_types.h"
-#include "freertos/idf_additions.h"
-#include "freertos/projdefs.h"
-#include "hal/i2s_types.h"
+
+// Local Includes
+#include "config.h"
 #include "http_server.h"
-#include "portmacro.h"
-#include "soc/clk_tree_defs.h"
 
 // I2S Handles
 static i2s_chan_handle_t tx_handle = nullptr;

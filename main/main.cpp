@@ -1,20 +1,25 @@
-#include "driver/i2c_master.h"
-#include "esp_chip_info.h"
-#include "esp_err.h"
-#include "esp_event.h"
-#include "esp_flash.h"
-#include "esp_log.h"
-#include "esp_log_level.h"
-#include "esp_netif_sntp.h"
-#include "esp_system.h"
+// Standard Library
 #include <array>
 #include <cstdint>
+#include <memory>
+
+// ESP-IDF
+#include <driver/i2c_master.h>
+#include <esp_chip_info.h>
+#include <esp_err.h>
+#include <esp_event.h>
+#include <esp_flash.h>
+#include <esp_log.h>
+#include <esp_log_level.h>
+#include <esp_netif_sntp.h>
+#include <esp_system.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/projdefs.h>
 #include <freertos/task.h>
-#include <memory>
 
-// Other ham_bridge components
+// External Components
+
+// Local Includes
 #include "config.h"
 #include "ethernet_handler.h"
 #include "http_server.h"

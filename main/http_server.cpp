@@ -1,29 +1,30 @@
 #include "http_server.h"
 
+// Standard Library
 #include <cstddef>
+#include <memory>
+#include <shared_mutex>
+#include <vector>
+
+// ESP-IDF
 #include <esp_err.h>
 #include <esp_eth_com.h>
 #include <esp_event.h>
 #include <esp_http_server.h>
 #include <esp_https_server.h>
 #include <esp_log.h>
+#include <esp_netif_types.h>
 #include <esp_system.h>
-#include <memory>
-#include <mutex>
-#include <shared_mutex>
-#include <vector>
+#include <freertos/idf_additions.h>
+#include <freertos/projdefs.h>
+#include <portmacro.h>
 
-#include <pb_encode.h>
-// #include <protos/messages/audioPacket.pb.h>
+// External Components
 
+// Local Includes
 #include "config.h"
-#include "esp_netif_types.h"
-#include "freertos/idf_additions.h"
-#include "freertos/projdefs.h"
-
 #include "i2s_handler.h"
 #include "key_cert_manager.h"
-#include "portmacro.h"
 
 // Implementation Reference:
 // https://github.com/espressif/esp-idf/blob/v6.0.1/examples/protocols/https_server/wss_server/main/wss_server_example.c
@@ -36,12 +37,15 @@ std::shared_mutex proto_stream_mutex;
 
 bool checkServerUp() { return server != nullptr; }
 
+// Handle an incoming websocket payload
 static esp_err_t wsHandler(httpd_req_t *req) {
+  // Get request indicates client is initiating a connection
   if (req->method == HTTP_GET) {
     ESP_LOGI(tag, "Handshake done, new websocket connection opened");
     return ESP_OK;
   }
 
+  // If not GET request, proceed to read the payload
   httpd_ws_frame_t ws_pkt = {
       .final = true,
       .fragmented = false, // final must be true
@@ -62,6 +66,7 @@ static esp_err_t wsHandler(httpd_req_t *req) {
   ESP_LOGI(tag, "Frame length is %d", ws_pkt.len);
   if (ws_pkt.len != 0) {
     // Allocate memory for the payload
+    // TODO(Zindswini): Should this be a static allocation?
     buf.resize(ws_pkt.len);
 
     ws_pkt.payload = buf.data();
@@ -135,20 +140,24 @@ static void sendAudioPacket(void *arg) {
       std::unique_ptr<AsyncRespArg>(static_cast<AsyncRespArg *>(arg));
 
   Chunk *chunk = nullptr;
+  // TODO(Zindswini): Is there a reason *not* to wait here almost indefinitely?
   if (xQueueReceive(queue_filled, static_cast<void *>(&chunk), 0) != pdTRUE) {
     ESP_LOGW(tag, "No filled chunk in queue, having to wait on I2S!");
     vTaskDelay(pdMS_TO_TICKS(100));
     return;
   }
 
+  // Have audio data, now need to format into websocket payload
   httpd_ws_frame_t ws_pkt = {
       .final = true,
       .fragmented = false,
       .type = HTTPD_WS_TYPE_BINARY,
       .payload = chunk->used().data(),
-      .len = chunk->len,
+      .len = chunk->used().size_bytes(),
   };
 
+  // This is a blocking function. After it is successful we no longer need this
+  // chunk's data. Don't be fooled by async in the name.
   esp_err_t ret =
       httpd_ws_send_frame_async(resp_arg->hd, resp_arg->fd, &ws_pkt);
 
@@ -323,8 +332,7 @@ static void wssServerSendMessages() {
           ESP_LOGI(tag, "Websocket client: fd=%d -> sending async message",
                    sock);
 
-          std::unique_ptr<AsyncRespArg> resp_arg =
-              std::make_unique<AsyncRespArg>();
+          auto resp_arg = std::make_unique<AsyncRespArg>();
 
           resp_arg->hd = server;
           resp_arg->fd = sock;

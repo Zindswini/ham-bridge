@@ -1,6 +1,11 @@
 #include "key_cert_manager.h"
 
+// Standard Library
 #include <array>
+#include <vector>
+
+// ESP-IDF
+#include <esp_err.h>
 #include <esp_http_server.h>
 #include <esp_log.h>
 #include <mbedtls/md.h>
@@ -12,10 +17,11 @@
 #include <psa/crypto_struct.h>
 #include <psa/crypto_types.h>
 #include <psa/crypto_values.h>
-#include <vector>
 
+// External Components
+
+// Local Includes
 #include "config.h"
-#include "esp_err.h"
 
 static const char *tag = "KEY_CERT_MANAGER";
 

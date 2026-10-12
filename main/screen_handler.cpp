@@ -1,23 +1,30 @@
 #include "screen_handler.h"
 
-#include "icons.h"
-#include "input_handler.h"
-#include "u8g2.h"
-#include "u8g2_esp32_hal.h"
-#include "u8x8.h"
+// Standard Library
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <esp_log.h>
-#include <freertos/FreeRTOS.h>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <sys/_timeval.h>
-#include <sys/cdefs.h>
-#include <sys/time.h>
 #include <sys/types.h>
 #include <variant>
+
+// ESP-IDF
+#include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <sys/cdefs.h>
+#include <sys/time.h>
+
+// External Components
+#include "u8g2.h"
+#include "u8g2_esp32_hal.h"
+#include "u8x8.h"
+
+// Local Includes
+#include "icons.h"
+#include "input_handler.h"
 
 static const char *tag = "SCREEN_HANDLER";
 

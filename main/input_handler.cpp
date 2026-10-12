@@ -1,16 +1,23 @@
 #include "input_handler.h"
 
-#include "config.h"
-#include "driver/gpio.h"
-#include "esp_err.h"
-#include "esp_log.h"
-#include "esp_timer.h"
-#include "hal/gpio_types.h"
-#include "screen_handler.h"
+// Standard Library
 #include <cstdint>
+
+// ESP-IDF
+#include <driver/gpio.h>
+#include <esp_err.h>
+#include <esp_log.h>
+#include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <hal/gpio_types.h>
 #include <sys/cdefs.h>
+
+// External Components
+
+// Local Includes
+#include "config.h"
+#include "screen_handler.h"
 
 static const char *tag = "INPUT_HANDLER";
 

@@ -1,21 +1,28 @@
 #include "ethernet_handler.h"
 
-#include "esp_err.h"
-#include "esp_eth_driver.h"
-#include "esp_eth_netif_glue.h"
-#include "esp_event.h"
-#include "esp_log.h"
-#include "esp_netif.h"
-#include "esp_netif_defaults.h"
-#include "esp_netif_ip_addr.h"
-#include "esp_netif_types.h"
-#include "ethernet_init.h"
-#include "freertos/idf_additions.h"
+// Standard Library
 #include <cstdlib>
 #include <cstring>
 #include <format>
-#include <sys/cdefs.h>
 #include <vector>
+
+// ESP-IDF
+#include <esp_err.h>
+#include <esp_eth_driver.h>
+#include <esp_eth_netif_glue.h>
+#include <esp_event.h>
+#include <esp_log.h>
+#include <esp_netif.h>
+#include <esp_netif_defaults.h>
+#include <esp_netif_ip_addr.h>
+#include <esp_netif_types.h>
+#include <freertos/idf_additions.h>
+#include <sys/cdefs.h>
+
+// External Components
+#include "ethernet_init.h"
+
+// Local Includes
 
 static const char *tag = "ethernet_handler";
 
