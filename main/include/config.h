@@ -18,7 +18,7 @@
 #define VCC_VOLTAGE 3.3F
 
 // I2S Global Sample Rate
-#define I2S_SAMPLE_RATE 96000
+#define I2S_SAMPLE_RATE 44100
 #define I2S_BIT_WIDTH I2S_DATA_BIT_WIDTH_16BIT
 #define I2S_MCLK_MULITPLE I2S_MCLK_MULTIPLE_256
 // Front Interface Button Pins

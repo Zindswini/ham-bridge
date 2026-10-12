@@ -1,4 +1,5 @@
 import pathlib
+import pyaudio
 import ssl
 import sys
 
@@ -11,18 +12,25 @@ bridge_ip = "10.42.0.207"
 # ssl_context.load_verify_locations(localhost_pem)
 # ssl_context.check_hostname = False;
 
+p = pyaudio.PyAudio()
+stream = p.open(rate=44100, channels=2, format=pyaudio.paInt16, output=True, frames_per_buffer=256)
+
 def hello():
     # with connect(f"wss://{bridge_ip}/ws", ssl=ssl_context, ping_timeout=5, close_timeout=5) as websocket:
     # with connect(f"ws://{bridge_ip}/ws", ping_timeout=5, close_timeout=5) as websocket:
+    
     with connect(f"ws://{bridge_ip}/ws", ping_timeout=None, close_timeout=None, max_size=(1E6, 1E6)) as websocket:
-        # websocket.send("Hello world!")
-        # print("Sent Hello World")
+        print("Connected to websocket")
 
+        stream.start_stream()
         while True:
+            data = websocket.recv(timeout=None, decode=False)
+            stream.write(data)
             
-            sys.stdout.buffer.write(websocket.recv(timeout=None, decode=False));
-            sys.stdout.buffer.flush();
-            
-            # print(f"Received {message}")
+            print(f"Received Message")
 
-hello()
+try:
+    hello()
+except KeyboardInterrupt:
+    stream.stop_stream()
+    p.close()

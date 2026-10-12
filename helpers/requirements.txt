@@ -1,1 +1,2 @@
 websockets==16.0
+PyAudio==0.2.14
