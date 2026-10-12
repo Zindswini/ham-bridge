@@ -1,2 +1,3 @@
 websockets==16.0
 PyAudio==0.2.14
+betterproto2==0.10.0
