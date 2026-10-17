@@ -1,6 +1,7 @@
 #include "http_server.h"
 
 // Standard Library
+#include <array>
 #include <cstddef>
 #include <memory>
 #include <shared_mutex>
@@ -20,11 +21,16 @@
 #include <portmacro.h>
 
 // External Components
+#include "enums/features.pb.h"
+#include "enums/radio_models.pb.h"
+#include "messages/hello.pb.h"
+#include "pb_encode.h"
 
 // Local Includes
 #include "config.h"
 #include "i2s_handler.h"
 #include "key_cert_manager.h"
+#include "nanopb_helper.hpp"
 
 // Implementation Reference:
 // https://github.com/espressif/esp-idf/blob/v6.0.1/examples/protocols/https_server/wss_server/main/wss_server_example.c
@@ -34,6 +40,17 @@ static httpd_handle_t server = nullptr;
 
 static std::array<uint8_t, 8192> proto_stream_buf{};
 std::shared_mutex proto_stream_mutex;
+
+static const std::array<Zindswini_ham_bridge_Feature, 3> kFeatureList = {
+    Zindswini_ham_bridge_Feature_FEATURE_AUDIO_PCM,
+    Zindswini_ham_bridge_Feature_FEATURE_PRECOMPUTED_SPECTRUM,
+    Zindswini_ham_bridge_Feature_FEATURE_TX};
+
+static const Zindswini_ham_bridge_ServerInfo kServerInfo = {
+    .server_firmware_version = npb::str("0.0.0"),
+    .server_nickname = npb::str("dev_board"),
+    .radio_model = Zindswini_ham_bridge_RadioModel_RADIO_MODEL_XIEGU_G90,
+    .features = npb::enum_list(&kFeatureList)};
 
 bool checkServerUp() { return server != nullptr; }
 
@@ -48,7 +65,7 @@ static esp_err_t wsHandler(httpd_req_t *req) {
   // If not GET request, proceed to read the payload
   httpd_ws_frame_t ws_pkt = {
       .final = true,
-      .fragmented = false, // final must be true
+      .fragmented = false,  // final must be true
       .type = HTTPD_WS_TYPE_CONTINUE,
       .payload = nullptr,
       .len = 0,
@@ -80,37 +97,37 @@ static esp_err_t wsHandler(httpd_req_t *req) {
 
   // Now have metadata and payload written to ws_pkt and buf
   switch (ws_pkt.type) {
-  case HTTPD_WS_TYPE_PONG:
-    ESP_LOGD(tag, "Received PONG message");
-    // TODO(Zindswini): Actually mark connection as healthy
-    break;
-  case HTTPD_WS_TYPE_TEXT:
-  case HTTPD_WS_TYPE_PING:
-  case HTTPD_WS_TYPE_CLOSE:
-    if (ws_pkt.type == HTTPD_WS_TYPE_TEXT) {
-      ESP_LOGI(tag, "Received packet with message %s", ws_pkt.payload);
-    } else if (ws_pkt.type == HTTPD_WS_TYPE_PING) {
-      ESP_LOGI(tag, "Got WS PING frame, replying w/ PONG");
-      ws_pkt.type = HTTPD_WS_TYPE_PONG;
-    } else if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
-      ws_pkt.len = 0;
-      ws_pkt.payload = nullptr;
-    }
-    ret = httpd_ws_send_frame(req, &ws_pkt);
-    if (ret != ESP_OK) {
-      ESP_LOGE(tag, "httpd_ws_send_frame failed with %d", ret);
-    }
+    case HTTPD_WS_TYPE_PONG:
+      ESP_LOGD(tag, "Received PONG message");
+      // TODO(Zindswini): Actually mark connection as healthy
+      break;
+    case HTTPD_WS_TYPE_TEXT:
+    case HTTPD_WS_TYPE_PING:
+    case HTTPD_WS_TYPE_CLOSE:
+      if (ws_pkt.type == HTTPD_WS_TYPE_TEXT) {
+        ESP_LOGI(tag, "Received packet with message %s", ws_pkt.payload);
+      } else if (ws_pkt.type == HTTPD_WS_TYPE_PING) {
+        ESP_LOGI(tag, "Got WS PING frame, replying w/ PONG");
+        ws_pkt.type = HTTPD_WS_TYPE_PONG;
+      } else if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
+        ws_pkt.len = 0;
+        ws_pkt.payload = nullptr;
+      }
+      ret = httpd_ws_send_frame(req, &ws_pkt);
+      if (ret != ESP_OK) {
+        ESP_LOGE(tag, "httpd_ws_send_frame failed with %d", ret);
+      }
 
-    ESP_LOGI(tag, "ws_handler: httpd_handle_t=%p, sockfd=%d, client_info=%d",
-             req->handle, httpd_req_to_sockfd(req),
-             httpd_ws_get_fd_info(req->handle, httpd_req_to_sockfd(req)));
-    return ret;
+      ESP_LOGI(tag, "ws_handler: httpd_handle_t=%p, sockfd=%d, client_info=%d",
+               req->handle, httpd_req_to_sockfd(req),
+               httpd_ws_get_fd_info(req->handle, httpd_req_to_sockfd(req)));
+      return ret;
 
-    break;
-  case HTTPD_WS_TYPE_CONTINUE:
-  case HTTPD_WS_TYPE_BINARY:
-    ESP_LOGI(tag, "HTTP Payload type has no implementation!");
-    break;
+      break;
+    case HTTPD_WS_TYPE_CONTINUE:
+    case HTTPD_WS_TYPE_BINARY:
+      ESP_LOGI(tag, "HTTP Payload type has no implementation!");
+      break;
   }
 
   return ESP_OK;
@@ -140,7 +157,8 @@ static void sendAudioPacket(void *arg) {
       std::unique_ptr<AsyncRespArg>(static_cast<AsyncRespArg *>(arg));
 
   Chunk *chunk = nullptr;
-  // TODO(Zindswini): Is there a reason *not* to wait here almost indefinitely?
+  // TODO(Zindswini): Is there a reason *not* to wait here almost
+  // indefinitely?
   if (xQueueReceive(queue_filled, static_cast<void *>(&chunk), 0) != pdTRUE) {
     ESP_LOGW(tag, "No filled chunk in queue, having to wait on I2S!");
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -156,8 +174,8 @@ static void sendAudioPacket(void *arg) {
       .len = chunk->used().size_bytes(),
   };
 
-  // This is a blocking function. After it is successful we no longer need this
-  // chunk's data. Don't be fooled by async in the name.
+  // This is a blocking function. After it is successful we no longer need
+  // this chunk's data. Don't be fooled by async in the name.
   esp_err_t ret =
       httpd_ws_send_frame_async(resp_arg->hd, resp_arg->fd, &ws_pkt);
 
@@ -175,7 +193,7 @@ static void sendAudioPacket(void *arg) {
   if (xQueueSend(queue_free, static_cast<void *>(&chunk), 0) != pdTRUE) {
     ESP_LOGW(tag, "No free chunk left, I2S must be too slow!");
     xQueueSend(queue_free, static_cast<void *>(&chunk),
-               portMAX_DELAY); // So we don't lose access to a chunk
+               portMAX_DELAY);  // So we don't lose access to a chunk
   } else {
     ESP_LOGD(tag, "Returned chunk with addr %p to free queue",
              chunk->storage.data());
@@ -343,7 +361,7 @@ static void wssServerSendMessages() {
           if (ret == ESP_OK) {
             // httpd will call delete on pointer.
             // Release here to avoid double free.
-            resp_arg.release(); // NOLINT(bugprone-unused-return-value)
+            resp_arg.release();  // NOLINT(bugprone-unused-return-value)
             ESP_LOGD(tag, "Successfully queued audioPacket work to httpd");
           } else {
             ESP_LOGE(tag, "httpd_queue_work failed");
