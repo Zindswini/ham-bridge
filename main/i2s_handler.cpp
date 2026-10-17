@@ -180,7 +180,7 @@ esp_err_t es8388CodecInit(i2c_master_bus_handle_t i2c_bus_handle) {
 
   // Set LOUT DAC Gain to 0db (Previously set to -30db in open func)
   esp_err_t ret = ESP_CODEC_DEV_OK;
-  int val_to_write = 0x1E; // 0db
+  int val_to_write = 0x1E;  // 0db
   // int val_to_write = 0x0F; // -15db
 
   // Set Register ES8388_DACCONTROL26 (0x30) (LOUT2 Gain) = 0dB
@@ -257,7 +257,7 @@ void i2SReadTask(void *args __unused) {
 
   while (true) {
     // Make sure server is up
-    if (!checkServerUp()) {
+    if (!checkConnectionActive()) {
       ESP_LOGV(tag, "HTTP server not up, not writing i2s data");
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;

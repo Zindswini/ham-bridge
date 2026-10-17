@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <vector>
 
@@ -24,6 +25,7 @@
 #include "enums/features.pb.h"
 #include "enums/radio_models.pb.h"
 #include "messages/hello.pb.h"
+#include "pb.h"
 #include "pb_encode.h"
 
 // Local Includes
@@ -53,6 +55,15 @@ static const Zindswini_ham_bridge_ServerInfo kServerInfo = {
     .features = npb::enum_list(&kFeatureList)};
 
 bool checkServerUp() { return server != nullptr; }
+bool checkConnectionActive() {
+  size_t clients = MAX_HTTP_CLIENTS;
+  std::array<int, MAX_HTTP_CLIENTS> client_fds{};
+
+  if (httpd_get_client_list(server, &clients, client_fds.data()) == ESP_OK) {
+    return clients > 0;
+  }
+  return false;
+}
 
 // Handle an incoming websocket payload
 static esp_err_t wsHandler(httpd_req_t *req) {
@@ -81,7 +92,7 @@ static esp_err_t wsHandler(httpd_req_t *req) {
   }
 
   ESP_LOGI(tag, "Frame length is %d", ws_pkt.len);
-  if (ws_pkt.len != 0) {
+  if (ws_pkt.len != 0 && ws_pkt.len <= MAX_HTTP_PAYLOAD_SIZE) {
     // Allocate memory for the payload
     // TODO(Zindswini): Should this be a static allocation?
     buf.resize(ws_pkt.len);
@@ -93,6 +104,12 @@ static esp_err_t wsHandler(httpd_req_t *req) {
       ESP_LOGE(tag, "httpd_ws_recv_frame failed with %d", ret);
       return ret;
     }
+  } else {
+    ESP_LOGE(tag,
+             "httpd_ws_recv_frame returned invalid payload size (%d)! Max "
+             "size: (%d)!",
+             ws_pkt.len, MAX_HTTP_PAYLOAD_SIZE);
+    return ESP_ERR_INVALID_ARG;
   }
 
   // Now have metadata and payload written to ws_pkt and buf
@@ -201,8 +218,15 @@ static void sendAudioPacket(void *arg) {
 }
 
 static void sendHello(void *arg) {
-  std::string data_string = std::string("Hello Client!");
-  std::vector<uint8_t> data_vec(data_string.begin(), data_string.end());
+  std::unique_lock lock(proto_stream_mutex);
+  pb_ostream_t stream =
+      pb_ostream_from_buffer(proto_stream_buf.data(), proto_stream_buf.size());
+
+  if (!pb_encode(&stream, Zindswini_ham_bridge_ServerInfo_fields,
+                 &kServerInfo)) {
+    ESP_LOGE(tag, "Failed to encode protobuf hello message");
+    return;
+  }
 
   // Take ownership of data at arg (cleaned up automatically)
   auto resp_arg =
@@ -211,9 +235,9 @@ static void sendHello(void *arg) {
   httpd_ws_frame_t ws_pkt = {
       .final = true,
       .fragmented = false,
-      .type = HTTPD_WS_TYPE_TEXT,
-      .payload = data_vec.data(),
-      .len = data_vec.size(),
+      .type = HTTPD_WS_TYPE_BINARY,
+      .payload = proto_stream_buf.data(),
+      .len = stream.bytes_written,
   };
 
   esp_err_t ret =
@@ -355,8 +379,11 @@ static void wssServerSendMessages() {
           resp_arg->hd = server;
           resp_arg->fd = sock;
 
+          // esp_err_t ret =
+          // httpd_queue_work(resp_arg->hd, sendAudioPacket, resp_arg.get());
+
           esp_err_t ret =
-              httpd_queue_work(resp_arg->hd, sendAudioPacket, resp_arg.get());
+              httpd_queue_work(resp_arg->hd, sendHello, resp_arg.get());
 
           if (ret == ESP_OK) {
             // httpd will call delete on pointer.

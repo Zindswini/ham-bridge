@@ -28,8 +28,8 @@ def hello():
             # Note: recv will wait for either a TEXT or BINARY type packet.
             # The others (hello, close, ping, pong, continue) are handled automatically.
             data = websocket.recv(timeout=None, decode=False)
-            
-            stream.write(data)
+            print(ham_bridge.ServerInfo.parse(data).to_json(indent=2))
+            # stream.write(data)
             
             print(f"Received Message")
 

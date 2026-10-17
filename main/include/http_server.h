@@ -14,6 +14,7 @@ extern "C" {
 
 void wssServerTask(void *args);
 bool checkServerUp();
+bool checkConnectionActive();
 
 #ifdef __cplusplus
 }
