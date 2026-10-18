@@ -33,15 +33,13 @@
 #include "i2s_handler.h"
 #include "key_cert_manager.h"
 #include "nanopb_helper.hpp"
+#include "request_handlers.h"
 
 // Implementation Reference:
 // https://github.com/espressif/esp-idf/blob/v6.0.1/examples/protocols/https_server/wss_server/main/wss_server_example.c
 
 static const char *tag = "HTTPS_WSS_SERVER";
 static httpd_handle_t server = nullptr;
-
-static std::array<uint8_t, 8192> proto_stream_buf{};
-std::shared_mutex proto_stream_mutex;
 
 static const std::array<Zindswini_ham_bridge_Feature, 3> kFeatureList = {
     Zindswini_ham_bridge_Feature_FEATURE_AUDIO_PCM,
@@ -73,8 +71,12 @@ static esp_err_t wsHandler(httpd_req_t *req) {
     return ESP_OK;
   }
 
+  ESP_LOGV(tag, "ws_handler: httpd_handle_t=%p, sockfd=%d, client_info=%d",
+           req->handle, httpd_req_to_sockfd(req),
+           httpd_ws_get_fd_info(req->handle, httpd_req_to_sockfd(req)));
+
   // If not GET request, proceed to read the payload
-  httpd_ws_frame_t ws_pkt = {
+  httpd_ws_frame_t incoming_ws_pkt = {
       .final = true,
       .fragmented = false,  // final must be true
       .type = HTTPD_WS_TYPE_CONTINUE,
@@ -84,70 +86,64 @@ static esp_err_t wsHandler(httpd_req_t *req) {
   std::vector<uint8_t> buf;
 
   // Call receive w/ len 0 to extract just payload size
-  esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
+  esp_err_t ret = httpd_ws_recv_frame(req, &incoming_ws_pkt, 0);
   if (ret != ESP_OK) {
     ESP_LOGE(tag, "httpd_ws_recv_frame failed to get frame length with %d",
              ret);
     return ret;
   }
 
-  ESP_LOGI(tag, "Frame length is %d", ws_pkt.len);
-  if (ws_pkt.len != 0 && ws_pkt.len <= MAX_HTTP_PAYLOAD_SIZE) {
-    // Allocate memory for the payload
-    // TODO(Zindswini): Should this be a static allocation?
-    buf.resize(ws_pkt.len);
-
-    ws_pkt.payload = buf.data();
-    // Call receive w/ actual len, writes into allocated memory
-    ret = httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len);
-    if (ret != ESP_OK) {
-      ESP_LOGE(tag, "httpd_ws_recv_frame failed with %d", ret);
-      return ret;
-    }
-  } else {
+  // Check/validate payload size
+  if (incoming_ws_pkt.len == 0 || incoming_ws_pkt.len > MAX_WS_PAYLOAD_SIZE) {
     ESP_LOGE(tag,
              "httpd_ws_recv_frame returned invalid payload size (%d)! Max "
              "size: (%d)!",
-             ws_pkt.len, MAX_HTTP_PAYLOAD_SIZE);
+             incoming_ws_pkt.len, MAX_WS_PAYLOAD_SIZE);
     return ESP_ERR_INVALID_ARG;
   }
 
-  // Now have metadata and payload written to ws_pkt and buf
-  switch (ws_pkt.type) {
-    case HTTPD_WS_TYPE_PONG:
-      ESP_LOGD(tag, "Received PONG message");
-      // TODO(Zindswini): Actually mark connection as healthy
-      break;
-    case HTTPD_WS_TYPE_TEXT:
-    case HTTPD_WS_TYPE_PING:
-    case HTTPD_WS_TYPE_CLOSE:
-      if (ws_pkt.type == HTTPD_WS_TYPE_TEXT) {
-        ESP_LOGI(tag, "Received packet with message %s", ws_pkt.payload);
-      } else if (ws_pkt.type == HTTPD_WS_TYPE_PING) {
-        ESP_LOGI(tag, "Got WS PING frame, replying w/ PONG");
-        ws_pkt.type = HTTPD_WS_TYPE_PONG;
-      } else if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
-        ws_pkt.len = 0;
-        ws_pkt.payload = nullptr;
-      }
-      ret = httpd_ws_send_frame(req, &ws_pkt);
-      if (ret != ESP_OK) {
-        ESP_LOGE(tag, "httpd_ws_send_frame failed with %d", ret);
-      }
+  // Allocate memory for the payload
+  // TODO(Zindswini): Should this be a static allocation?
+  buf.resize(incoming_ws_pkt.len);
+  incoming_ws_pkt.payload = buf.data();
 
-      ESP_LOGI(tag, "ws_handler: httpd_handle_t=%p, sockfd=%d, client_info=%d",
-               req->handle, httpd_req_to_sockfd(req),
-               httpd_ws_get_fd_info(req->handle, httpd_req_to_sockfd(req)));
-      return ret;
-
-      break;
-    case HTTPD_WS_TYPE_CONTINUE:
-    case HTTPD_WS_TYPE_BINARY:
-      ESP_LOGI(tag, "HTTP Payload type has no implementation!");
-      break;
+  // Actually recieve the request payload
+  ret = httpd_ws_recv_frame(req, &incoming_ws_pkt, incoming_ws_pkt.len);
+  if (ret != ESP_OK) {
+    ESP_LOGE(tag, "httpd_ws_recv_frame failed with %d", ret);
+    return ret;
   }
 
-  return ESP_OK;
+  // Have metadata and request, dispatch on type of websocket packet
+  switch (incoming_ws_pkt.type) {
+    case HTTPD_WS_TYPE_PONG:
+      ESP_LOGD(tag, "Received PONG message");
+      // TODO(Zindswini): Reset connection health/timeout for this FD
+      break;
+
+    case HTTPD_WS_TYPE_TEXT:
+      ESP_LOGW(tag, "Got unexpected TEXT type websocket message");
+      break;
+
+    case HTTPD_WS_TYPE_BINARY:
+      // Treat as protobuf payload
+
+      break;
+
+    // Ping+close should be handled by http server. Streaming / fragmented
+    // payloads aren't implemented
+    case HTTPD_WS_TYPE_PING:
+    case HTTPD_WS_TYPE_CLOSE:
+    case HTTPD_WS_TYPE_CONTINUE:
+    default:
+      ESP_LOGE(tag, "Got unexpected websocket message type: %d, ignoring.",
+               incoming_ws_pkt.type);
+      break;
+  }
+  if (ret != ESP_OK) {
+    ESP_LOGE(tag, "httpd_ws_send_frame failed with %d", ret);
+  }
+  return ret;
 }
 
 static const httpd_uri_t kWsUriConf = {
@@ -214,52 +210,6 @@ static void sendAudioPacket(void *arg) {
   } else {
     ESP_LOGD(tag, "Returned chunk with addr %p to free queue",
              chunk->storage.data());
-  }
-}
-
-static void sendHello(void *arg) {
-  std::unique_lock lock(proto_stream_mutex);
-  pb_ostream_t stream =
-      pb_ostream_from_buffer(proto_stream_buf.data(), proto_stream_buf.size());
-
-  if (!pb_encode(&stream, Zindswini_ham_bridge_ServerInfo_fields,
-                 &kServerInfo)) {
-    ESP_LOGE(tag, "Failed to encode protobuf hello message");
-    return;
-  }
-
-  // Take ownership of data at arg (cleaned up automatically)
-  auto resp_arg =
-      std::unique_ptr<AsyncRespArg>(static_cast<AsyncRespArg *>(arg));
-
-  httpd_ws_frame_t ws_pkt = {
-      .final = true,
-      .fragmented = false,
-      .type = HTTPD_WS_TYPE_BINARY,
-      .payload = proto_stream_buf.data(),
-      .len = stream.bytes_written,
-  };
-
-  esp_err_t ret =
-      httpd_ws_send_frame_async(resp_arg->hd, resp_arg->fd, &ws_pkt);
-  if (ret != ESP_OK) {
-    ESP_LOGE(tag, "Failed to send websocket frame! ret = %d", ret);
-  }
-}
-
-static void sendPing(void *arg) {
-  auto *resp_arg = static_cast<AsyncRespArg *>(arg);
-
-  httpd_ws_frame_t ws_pkt = {.final = true,
-                             .fragmented = false,
-                             .type = HTTPD_WS_TYPE_PING,
-                             .payload = nullptr,
-                             .len = 0};
-
-  esp_err_t ret =
-      httpd_ws_send_frame_async(resp_arg->hd, resp_arg->fd, &ws_pkt);
-  if (ret != ESP_OK) {
-    ESP_LOGE(tag, "Failed to send websocket frame! ret = %d", ret);
   }
 }
 
@@ -382,8 +332,8 @@ static void wssServerSendMessages() {
           // esp_err_t ret =
           // httpd_queue_work(resp_arg->hd, sendAudioPacket, resp_arg.get());
 
-          esp_err_t ret =
-              httpd_queue_work(resp_arg->hd, sendHello, resp_arg.get());
+          esp_err_t ret = httpd_queue_work(resp_arg->hd, handleHelloRequest,
+                                           resp_arg.get());
 
           if (ret == ESP_OK) {
             // httpd will call delete on pointer.

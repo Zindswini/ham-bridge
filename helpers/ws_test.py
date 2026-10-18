@@ -20,7 +20,7 @@ stream = p.open(rate=44100, channels=2, format=pyaudio.paInt16, output=True, fra
 def hello():
     # with connect(f"wss://{bridge_ip}/ws", ssl=ssl_context, ping_timeout=5, close_timeout=5) as websocket:
     # with connect(f"ws://{bridge_ip}/ws", ping_timeout=5, close_timeout=5) as websocket:
-    with connect(f"ws://{bridge_ip}/ws", ping_timeout=None, close_timeout=None, max_size=(1E6, 1E6)) as websocket:
+    with connect(f"ws://{bridge_ip}/ws", ping_interval=5, ping_timeout=2, close_timeout=None, max_size=(1E6, 1E6)) as websocket:
         print("Connected to websocket")
 
         stream.start_stream()

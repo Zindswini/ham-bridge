@@ -37,7 +37,7 @@
 #define NVS_TLS_CERT_KEY "cert_val"
 #define NVS_TLS_KEY_KEY "key_val"
 
-#define MAX_HTTP_PAYLOAD_SIZE 1E6  // 1MB
+#define MAX_WS_PAYLOAD_SIZE 1E6  // 1MB
 
 // Audio Buffer Settings
 #define BUFFER_SLOTS 3

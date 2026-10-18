@@ -1,12 +1,6 @@
-#ifndef HTTP_SERVER_H
-#define HTTP_SERVER_H
+#pragma once
 
 #include "esp_http_server.h"
-
-struct AsyncRespArg {
-  httpd_handle_t hd;
-  int fd;
-};
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,6 +12,4 @@ bool checkConnectionActive();
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif
