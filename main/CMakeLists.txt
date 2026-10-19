@@ -18,7 +18,8 @@ target_compile_options(${COMPONENT_LIB} PRIVATE
     -Wdouble-promotion
     -fstack-protector-strong
     -Wstack-usage=4096
-
+    
+    -Wno-error=missing-field-initializers
     $<$<COMPILE_LANGUAGE:CXX>:-Wnon-virtual-dtor>
     $<$<COMPILE_LANGUAGE:CXX>:-Woverloaded-virtual>
     # $<$<COMPILE_LANGUAGE:CXX>:-Wold-style-cast>
