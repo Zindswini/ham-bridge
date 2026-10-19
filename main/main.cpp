@@ -34,22 +34,19 @@ static const char *tag = "MAIN";
 i2c_master_bus_handle_t i2c_bus_handle;
 uint32_t last_draw_time;
 
-extern "C" void app_main(void) {   // NOLINT(readability-identifier-naming)
-  vTaskDelay(pdMS_TO_TICKS(1500)); // Delay for monitoring reconnect
+extern "C" void app_main(void) {    // NOLINT(readability-identifier-naming)
+  vTaskDelay(pdMS_TO_TICKS(1500));  // Delay for monitoring reconnect
   ESP_LOGI(tag, "Hello world!");
 
   /* Print chip information */
   esp_chip_info_t chip_info;
   uint32_t flash_size = 0;
   esp_chip_info(&chip_info);
-  ESP_LOGI(tag, "This is %s chip with %d CPU core(s), %s%s%s%s, ",
-           CONFIG_IDF_TARGET, chip_info.cores,
+  ESP_LOGI(tag, "This is %s chip with %d CPU core(s), %s%s%s%s, ", CONFIG_IDF_TARGET, chip_info.cores,
            (chip_info.features & CHIP_FEATURE_WIFI_BGN) ? "WiFi/" : "",
-           (chip_info.features & CHIP_FEATURE_BT) ? "BT" : "", // :3
+           (chip_info.features & CHIP_FEATURE_BT) ? "BT" : "",  // :3
            (chip_info.features & CHIP_FEATURE_BLE) ? "BLE" : "",
-           (chip_info.features & CHIP_FEATURE_IEEE802154)
-               ? ", 802.15.4 (Zigbee/Thread)"
-               : "");
+           (chip_info.features & CHIP_FEATURE_IEEE802154) ? ", 802.15.4 (Zigbee/Thread)" : "");
 
   unsigned major_rev = chip_info.revision / 100;
   unsigned minor_rev = chip_info.revision % 100;
@@ -60,11 +57,9 @@ extern "C" void app_main(void) {   // NOLINT(readability-identifier-naming)
   }
 
   ESP_LOGI(tag, "%" PRIu32 "MB %s flash", flash_size / (uint32_t)(1024 * 1024),
-           (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded"
-                                                         : "external");
+           (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
 
-  ESP_LOGI(tag, "Minimum free heap size: %" PRIu32 " bytes",
-           esp_get_minimum_free_heap_size());
+  ESP_LOGI(tag, "Minimum free heap size: %" PRIu32 " bytes", esp_get_minimum_free_heap_size());
 
   // Initialize Drivers and Objects
 
@@ -171,6 +166,6 @@ extern "C" void app_main(void) {   // NOLINT(readability-identifier-naming)
     vTaskList(out_buf->data() + 1);
     ESP_LOGI(tag, out_buf->data());
 
-    vTaskDelay(pdMS_TO_TICKS(10000));
+    vTaskDelay(pdMS_TO_TICKS(30000));
   }
 }

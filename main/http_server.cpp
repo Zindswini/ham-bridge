@@ -41,17 +41,6 @@
 static const char *tag = "HTTPS_WSS_SERVER";
 static httpd_handle_t server = nullptr;
 
-static const std::array<Zindswini_ham_bridge_Feature, 3> kFeatureList = {
-    Zindswini_ham_bridge_Feature_FEATURE_AUDIO_PCM,
-    Zindswini_ham_bridge_Feature_FEATURE_PRECOMPUTED_SPECTRUM,
-    Zindswini_ham_bridge_Feature_FEATURE_TX};
-
-static const Zindswini_ham_bridge_ServerInfo kServerInfo = {
-    .server_firmware_version = npb::str("0.0.0"),
-    .server_nickname = npb::str("dev_board"),
-    .radio_model = Zindswini_ham_bridge_RadioModel_RADIO_MODEL_XIEGU_G90,
-    .features = npb::enum_list(&kFeatureList)};
-
 bool checkServerUp() { return server != nullptr; }
 bool checkConnectionActive() {
   size_t clients = MAX_HTTP_CLIENTS;
@@ -71,8 +60,7 @@ static esp_err_t wsHandler(httpd_req_t *req) {
     return ESP_OK;
   }
 
-  ESP_LOGV(tag, "ws_handler: httpd_handle_t=%p, sockfd=%d, client_info=%d",
-           req->handle, httpd_req_to_sockfd(req),
+  ESP_LOGV(tag, "ws_handler: httpd_handle_t=%p, sockfd=%d, client_info=%d", req->handle, httpd_req_to_sockfd(req),
            httpd_ws_get_fd_info(req->handle, httpd_req_to_sockfd(req)));
 
   // If not GET request, proceed to read the payload
@@ -88,8 +76,7 @@ static esp_err_t wsHandler(httpd_req_t *req) {
   // Call receive w/ len 0 to extract just payload size
   esp_err_t ret = httpd_ws_recv_frame(req, &incoming_ws_pkt, 0);
   if (ret != ESP_OK) {
-    ESP_LOGE(tag, "httpd_ws_recv_frame failed to get frame length with %d",
-             ret);
+    ESP_LOGE(tag, "httpd_ws_recv_frame failed to get frame length with %d", ret);
     return ret;
   }
 
@@ -113,6 +100,9 @@ static esp_err_t wsHandler(httpd_req_t *req) {
     ESP_LOGE(tag, "httpd_ws_recv_frame failed with %d", ret);
     return ret;
   }
+  // Resize again in case actual payload size was smaller than anticipated
+  // TODO(Zindswini): Fully validate if this is needed
+  buf.resize(incoming_ws_pkt.len);
 
   // Have metadata and request, dispatch on type of websocket packet
   switch (incoming_ws_pkt.type) {
@@ -127,7 +117,7 @@ static esp_err_t wsHandler(httpd_req_t *req) {
 
     case HTTPD_WS_TYPE_BINARY:
       // Treat as protobuf payload
-
+      dispatchProtobufRequest(buf, *req);
       break;
 
     // Ping+close should be handled by http server. Streaming / fragmented
@@ -136,8 +126,7 @@ static esp_err_t wsHandler(httpd_req_t *req) {
     case HTTPD_WS_TYPE_CLOSE:
     case HTTPD_WS_TYPE_CONTINUE:
     default:
-      ESP_LOGE(tag, "Got unexpected websocket message type: %d, ignoring.",
-               incoming_ws_pkt.type);
+      ESP_LOGE(tag, "Got unexpected websocket message type: %d, ignoring.", incoming_ws_pkt.type);
       break;
   }
   if (ret != ESP_OK) {
@@ -166,12 +155,10 @@ static void sendAudioPacket(void *arg) {
   // TODO(Zindswini): Create Protobuf metadata and object
 
   // Take ownership of data at arg (cleaned up automatically)
-  auto resp_arg =
-      std::unique_ptr<AsyncRespArg>(static_cast<AsyncRespArg *>(arg));
+  auto resp_arg = std::unique_ptr<AsyncRespArg>(static_cast<AsyncRespArg *>(arg));
 
   Chunk *chunk = nullptr;
-  // TODO(Zindswini): Is there a reason *not* to wait here almost
-  // indefinitely?
+  // TODO(Zindswini): Is there a reason *not* to wait here almost indefinitely?
   if (xQueueReceive(queue_filled, static_cast<void *>(&chunk), 0) != pdTRUE) {
     ESP_LOGW(tag, "No filled chunk in queue, having to wait on I2S!");
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -189,16 +176,14 @@ static void sendAudioPacket(void *arg) {
 
   // This is a blocking function. After it is successful we no longer need
   // this chunk's data. Don't be fooled by async in the name.
-  esp_err_t ret =
-      httpd_ws_send_frame_async(resp_arg->hd, resp_arg->fd, &ws_pkt);
+  esp_err_t ret = httpd_ws_send_frame_async(resp_arg->hd, resp_arg->fd, &ws_pkt);
 
   if (ret != ESP_OK) {
     // Put chunk back into used queue for re-sending
     ESP_LOGE(tag, "Failed to send websocket frame! ret = %d", ret);
     xQueueSend(queue_filled, static_cast<void *>(&chunk), portMAX_DELAY);
   } else {
-    ESP_LOGI(tag, "Sent WSS Message of chunk with addr %p and size %d",
-             chunk->storage.data(), chunk->len);
+    ESP_LOGI(tag, "Sent WSS Message of chunk with addr %p and size %d", chunk->storage.data(), chunk->len);
   }
 
   // Successful send, put into free queue
@@ -208,8 +193,7 @@ static void sendAudioPacket(void *arg) {
     xQueueSend(queue_free, static_cast<void *>(&chunk),
                portMAX_DELAY);  // So we don't lose access to a chunk
   } else {
-    ESP_LOGD(tag, "Returned chunk with addr %p to free queue",
-             chunk->storage.data());
+    ESP_LOGD(tag, "Returned chunk with addr %p to free queue", chunk->storage.data());
   }
 }
 
@@ -266,9 +250,7 @@ static esp_err_t stopWssServer() {
 }
 
 // Called when wifi/ethernet disconnects
-static void disconnectHandler(void *arg __unused,
-                              esp_event_base_t event_base __unused,
-                              int32_t event_id __unused,
+static void disconnectHandler(void *arg __unused, esp_event_base_t event_base __unused, int32_t event_id __unused,
                               void *event_data __unused) {
   if (server != nullptr) {
     esp_err_t ret = stopWssServer();
@@ -283,9 +265,7 @@ static void disconnectHandler(void *arg __unused,
   }
 }
 
-static void connectHandler(void *arg __unused,
-                           esp_event_base_t event_base __unused,
-                           int32_t event_id __unused,
+static void connectHandler(void *arg __unused, esp_event_base_t event_base __unused, int32_t event_id __unused,
                            void *event_data __unused) {
   if (server == nullptr) {
     ESP_LOGI(tag, "Server setup handler called, starting server");
@@ -321,19 +301,15 @@ static void wssServerSendMessages() {
         int sock = client_fds.at(i);
 
         if (httpd_ws_get_fd_info(server, sock) == HTTPD_WS_CLIENT_WEBSOCKET) {
-          ESP_LOGI(tag, "Websocket client: fd=%d -> sending async message",
-                   sock);
+          ESP_LOGI(tag, "Websocket client: fd=%d -> sending async message", sock);
 
           auto resp_arg = std::make_unique<AsyncRespArg>();
-
           resp_arg->hd = server;
           resp_arg->fd = sock;
 
-          // esp_err_t ret =
-          // httpd_queue_work(resp_arg->hd, sendAudioPacket, resp_arg.get());
+          esp_err_t ret = httpd_queue_work(resp_arg->hd, sendAudioPacket, resp_arg.get());
 
-          esp_err_t ret = httpd_queue_work(resp_arg->hd, handleHelloRequest,
-                                           resp_arg.get());
+          // esp_err_t ret = httpd_queue_work(resp_arg->hd, handleHelloRequest, resp_arg.get());
 
           if (ret == ESP_OK) {
             // httpd will call delete on pointer.
@@ -361,14 +337,12 @@ void wssServerTask(void *args __unused) {
 
   ESP_LOGI(tag, "Registering connect/disconnect handlers");
   // Register server start/stop functions
-  ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP,
-                                             &connectHandler, nullptr));
-  ESP_ERROR_CHECK(esp_event_handler_register(
-      ETH_EVENT, ETHERNET_EVENT_DISCONNECTED, &disconnectHandler, nullptr));
+  ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &connectHandler, nullptr));
+  ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ETHERNET_EVENT_DISCONNECTED, &disconnectHandler, nullptr));
 
   ESP_LOGI(tag, "Registered connect/disconnect handlers");
 
-  wssServerSendMessages();
+  // wssServerSendMessages();
 
   while (true) {
     vTaskDelay(portMAX_DELAY);
