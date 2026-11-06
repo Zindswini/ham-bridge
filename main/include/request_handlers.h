@@ -16,6 +16,7 @@ struct AsyncRespArg {
 esp_err_t dispatchProtobufRequest(std::vector<uint8_t> &buf, httpd_req_t &req);
 
 // static esp_err_t handleWsPingRequest(void *arg);
+esp_err_t encodeAndSendPayload(const Zindswini_ham_bridge_Envelope &response, httpd_handle_t &handle, int fd);
 
 esp_err_t handleHelloRequest(Zindswini_ham_bridge_Request &payload, httpd_req_t &req);
 esp_err_t handlePingRequest(Zindswini_ham_bridge_Request &payload, httpd_req_t &req);

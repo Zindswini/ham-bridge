@@ -72,4 +72,23 @@ constexpr pb_callback_t enum_list(const std::array<T, N> *items) {
   return callback;
 }
 
+// Bytes Helpers
+// TODO(Zindswini): Maybe templating is more harm than good here
+// Come back and maybe just replace with std::span(s)
+template <typename ChunkT>
+inline bool enc_bytes(pb_ostream_t *s, const pb_field_t *f, void *const *arg) {
+  const auto *c = static_cast<const ChunkT *>(*arg);
+  const auto data = c->used();
+  return pb_encode_tag_for_field(s, f) &&
+         pb_encode_string(s, reinterpret_cast<const pb_byte_t *>(data.data()), data.size());
+}
+
+template <typename ChunkT>
+constexpr pb_callback_t bytes(const ChunkT *c) {
+  pb_callback_t callback{};
+  callback.funcs.encode = enc_bytes<ChunkT>;
+  callback.arg = const_cast<ChunkT *>(c);  // NOLINT(cppcoreguidelines-pro-type-const-cast)
+  return callback;
+}
+
 }  // namespace npb

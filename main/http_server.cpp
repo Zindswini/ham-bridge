@@ -2,10 +2,9 @@
 
 // Standard Library
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <memory>
-#include <mutex>
-#include <shared_mutex>
 #include <vector>
 
 // ESP-IDF
@@ -22,11 +21,8 @@
 #include <portmacro.h>
 
 // External Components
-#include "enums/features.pb.h"
-#include "enums/radio_models.pb.h"
-#include "messages/hello.pb.h"
-#include "pb.h"
-#include "pb_encode.h"
+#include "enums/audio_codec.pb.h"
+#include "messages/core_envelope.pb.h"
 
 // Local Includes
 #include "config.h"
@@ -40,6 +36,7 @@
 
 static const char *tag = "HTTPS_WSS_SERVER";
 static httpd_handle_t server = nullptr;
+static std::atomic_uint32_t audio_frame_sequence = 0;
 
 bool checkServerUp() { return server != nullptr; }
 bool checkConnectionActive() {
@@ -146,14 +143,7 @@ static const httpd_uri_t kWsUriConf = {
 };
 
 static void sendAudioPacket(void *arg) {
-  // Lock static buffer
-  // std::unique_lock lock(proto_stream_mutex);
-
-  // pb_ostream_t stream = pb_ostream_from_buffer(proto_stream_buf.data(),
-  // proto_stream_buf.size());
-
-  // TODO(Zindswini): Create Protobuf metadata and object
-
+  ESP_LOGD(tag, "Sending audio packet");
   // Take ownership of data at arg (cleaned up automatically)
   auto resp_arg = std::unique_ptr<AsyncRespArg>(static_cast<AsyncRespArg *>(arg));
 
@@ -165,25 +155,38 @@ static void sendAudioPacket(void *arg) {
     return;
   }
 
-  // Have audio data, now need to format into websocket payload
-  httpd_ws_frame_t ws_pkt = {
-      .final = true,
-      .fragmented = false,
-      .type = HTTPD_WS_TYPE_BINARY,
-      .payload = chunk->used().data(),
-      .len = chunk->used().size_bytes(),
+  timeval time{};
+  gettimeofday(&time, nullptr);
+  const uint64_t time_us = (time.tv_sec * 1'000'000) + time.tv_usec;
+
+  // Have chunk full of audio data, now wrap in Audio Frame Push-Event
+  const Zindswini_ham_bridge_AudioFrame audio_frame = {
+      .stream_id = 1,
+      .sequence = ++audio_frame_sequence,
+      .timestamp_us = time_us,
+      .codec = Zindswini_ham_bridge_AudioCodec_AUDIO_CODEC_ADPCM,
+      .sample_rate_hz = I2S_SAMPLE_RATE,
+      .channels = 2,
+      .data = npb::bytes(chunk),
   };
 
-  // This is a blocking function. After it is successful we no longer need
-  // this chunk's data. Don't be fooled by async in the name.
-  esp_err_t ret = httpd_ws_send_frame_async(resp_arg->hd, resp_arg->fd, &ws_pkt);
+  const Zindswini_ham_bridge_Envelope payload = {
+      .which_kind = Zindswini_ham_bridge_Envelope_push_event_tag,
+      .kind = {
+          .push_event = {.which_payload = Zindswini_ham_bridge_PushEvent_audio_frame_tag,
+                         .payload = {.audio_frame = audio_frame}},
+      }};
+
+  // Have protubuf object, get it out onto the wire!
+  esp_err_t ret = encodeAndSendPayload(payload, resp_arg->hd, resp_arg->fd);
 
   if (ret != ESP_OK) {
     // Put chunk back into used queue for re-sending
     ESP_LOGE(tag, "Failed to send websocket frame! ret = %d", ret);
     xQueueSend(queue_filled, static_cast<void *>(&chunk), portMAX_DELAY);
   } else {
-    ESP_LOGI(tag, "Sent WSS Message of chunk with addr %p and size %d", chunk->storage.data(), chunk->len);
+    ESP_LOGI(tag, "Sent WSS Message of chunk with addr %p and sequence number %d", chunk->storage.data(),
+             audio_frame_sequence.load());
   }
 
   // Successful send, put into free queue
@@ -342,7 +345,7 @@ void wssServerTask(void *args __unused) {
 
   ESP_LOGI(tag, "Registered connect/disconnect handlers");
 
-  // wssServerSendMessages();
+  wssServerSendMessages();
 
   while (true) {
     vTaskDelay(portMAX_DELAY);

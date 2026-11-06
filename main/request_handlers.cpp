@@ -32,7 +32,7 @@
 
 static const char *tag = "REQUEST_HANDLERS";
 
-static std::array<uint8_t, 8192> proto_stream_buf{};
+EXT_RAM_BSS_ATTR static std::array<uint8_t, 2*BUFFER_SLOT_BYTES> proto_stream_buf{};
 std::shared_mutex proto_stream_mutex;
 
 esp_err_t dispatchProtobufRequest(std::vector<uint8_t> &buf, httpd_req_t &req) {
@@ -87,7 +87,7 @@ esp_err_t dispatchProtobufRequest(std::vector<uint8_t> &buf, httpd_req_t &req) {
   return ret;
 };
 
-esp_err_t encodeAndSendPayload(const Zindswini_ham_bridge_Envelope &response, httpd_req_t &req) {
+esp_err_t encodeAndSendPayload(const Zindswini_ham_bridge_Envelope &response, httpd_handle_t &handle, int fd) {
   std::unique_lock lock(proto_stream_mutex);
   pb_ostream_t ostream = pb_ostream_from_buffer(proto_stream_buf.data(), proto_stream_buf.size());
   if (!pb_encode(&ostream, Zindswini_ham_bridge_Envelope_fields, &response)) {
@@ -95,7 +95,7 @@ esp_err_t encodeAndSendPayload(const Zindswini_ham_bridge_Envelope &response, ht
     return ESP_FAIL;
   }
 
-  // Send response
+  // Have protobuf encoded payload, need to package into websocket
   httpd_ws_frame_t ws_pkt = {
       .final = true,
       .fragmented = false,
@@ -103,12 +103,17 @@ esp_err_t encodeAndSendPayload(const Zindswini_ham_bridge_Envelope &response, ht
       .payload = proto_stream_buf.data(),
       .len = ostream.bytes_written,
   };
-  esp_err_t ret = httpd_ws_send_frame_async(req.handle, httpd_req_to_sockfd(&req), &ws_pkt);
+  // This is a blocking function. After it is successful we no longer need
+  // this chunk's data. Don't be fooled by async in the name.
+  esp_err_t ret = httpd_ws_send_frame_async(handle, fd, &ws_pkt);
   if (ret != ESP_OK) {
     ESP_LOGE(tag, "Failed to send response for handleHelloRequest");
     return ret;
   }
   return ESP_OK;
+}
+esp_err_t encodeAndSendPayload(const Zindswini_ham_bridge_Envelope &response, httpd_req_t &req) {
+  return encodeAndSendPayload(response, req.handle, httpd_req_to_sockfd(&req));
 }
 
 esp_err_t handleHelloRequest(Zindswini_ham_bridge_Request &payload, httpd_req_t &req) {

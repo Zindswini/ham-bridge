@@ -4,6 +4,7 @@ import pyaudio
 import ssl
 import sys
 import time
+import betterproto2
 
 sys.path.insert(0,"../components/ham-bridge-protos/compiled/python")
 from bridge_protos.Zindswini import ham_bridge
@@ -46,21 +47,25 @@ def hello():
         while True:
             # Note: recv will wait for either a TEXT or BINARY type packet.
             # The others (hello, close, ping, pong, continue) are handled automatically.
-            request = ham_bridge.Envelope(request=ham_bridge.Request(
-                request_id=999,
-                ping_request=ham_bridge.PingRequest(client_time_us=(time.time_ns() // 1000))
-            )).SerializeToString().__bytes__()
-            websocket.send(message=bytes(request), text=False)
-            print("Sent ping request")
+            # request = ham_bridge.Envelope(request=ham_bridge.Request(
+            #     request_id=999,
+            #     ping_request=ham_bridge.PingRequest(client_time_us=(time.time_ns() // 1000))
+            # )).SerializeToString().__bytes__()
+            # websocket.send(message=bytes(request), text=False)
+            # print("Sent ping request")
             data = websocket.recv(timeout=None, decode=None)
             if type(data) is bytes:
-                print(ham_bridge.Envelope.parse(data).to_json(indent=2))
+                envelope = ham_bridge.Envelope.parse(data)
+                print(f"Got proto message")
+                stream.write(envelope.push_event.audio_frame.data)
+                # print(envelope.to_json(indent=2))
+                
             elif type(data) is str:
                 print(f"Got text: {data}")
             
             # stream.write(data)
             
-            time.sleep(0.5)
+            # time.sleep(5)
 
 try:
     hello()
