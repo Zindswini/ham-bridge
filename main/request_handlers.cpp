@@ -3,7 +3,6 @@
 // Standard Library
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <vector>
@@ -12,6 +11,7 @@
 #include <esp_err.h>
 #include <esp_http_server.h>
 #include <esp_log.h>
+#include <mbedtls/esp_config.h>
 #include <sys/_timeval.h>
 #include <sys/time.h>
 
@@ -32,8 +32,10 @@
 
 static const char *tag = "REQUEST_HANDLERS";
 
-EXT_RAM_BSS_ATTR static std::array<uint8_t, 2*BUFFER_SLOT_BYTES> proto_stream_buf{};
+EXT_RAM_BSS_ATTR static std::array<uint8_t, static_cast<size_t>(1.2 * BUFFER_SLOT_BYTES)> proto_stream_buf{};
 std::shared_mutex proto_stream_mutex;
+// static_assert((2 * BUFFER_SLOT_BYTES) < MBEDTLS_SSL_OUT_CONTENT_LEN,
+//               "Proto output buffer bigger than TLS output buffer!");
 
 esp_err_t dispatchProtobufRequest(std::vector<uint8_t> &buf, httpd_req_t &req) {
   esp_err_t ret = ESP_OK;

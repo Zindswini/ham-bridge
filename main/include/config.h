@@ -3,6 +3,7 @@
 
 #include <driver/i2s_types.h>
 #include <soc/gpio_num.h>
+#include <cstddef>
 
 // OLED Display and ES8388 Control
 #define PIN_SDA GPIO_NUM_1
@@ -37,10 +38,11 @@
 #define NVS_TLS_CERT_KEY "cert_val"
 #define NVS_TLS_KEY_KEY "key_val"
 
-#define MAX_WS_PAYLOAD_SIZE 1E6  // 1MB
+#define MAX_INCOMING_WS_SIZE 1E6  // 1MB
 
 // Audio Buffer Settings
+#define BUFFER_SLOT_TIME_SECONDS 0.2
+constexpr size_t BUFFER_SLOT_BYTES = ((BUFFER_SLOT_TIME_SECONDS) * I2S_SAMPLE_RATE * (16.0 / 8.0) * 2);
 #define BUFFER_SLOTS 3
-#define BUFFER_SLOT_BYTES (1024 * 24)
 
 #endif

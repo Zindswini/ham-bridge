@@ -1,0 +1,16 @@
+httpd_ws_send_frame_async
+send_fn (reference to httpd_default_send)
+send
+lwip_send
+netconn_write_partly
+netconn_write_vectors_partly
+netconn_apimsg
+tcpip_send_msg_wait_sem
+sys_mbox_post (posts to queue)
+sys_arch_mbox_fetch (fetches from queue)
+tcpip_timeouts_mbox_fetch (passes up)
+tcpip_thread
+tcpip_thread_handle_msg
+lwip_netconn_do_write (passed from vectors_partly)
+lwip_netconn_do_writemore
+tcp_write

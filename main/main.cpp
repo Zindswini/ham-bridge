@@ -154,6 +154,13 @@ extern "C" void app_main(void) {    // NOLINT(readability-identifier-naming)
   esp_log_level_set("w5500.mac", ESP_LOG_INFO);
   esp_log_level_set("vfs_calls", ESP_LOG_INFO);
 
+  esp_log_level_set("httpd",          ESP_LOG_DEBUG);
+  esp_log_level_set("httpd_txrx",     ESP_LOG_DEBUG);
+  esp_log_level_set("httpd_ws",       ESP_LOG_DEBUG);
+  esp_log_level_set("httpd_uri",      ESP_LOG_DEBUG);
+  esp_log_level_set("httpd_sess",     ESP_LOG_DEBUG);
+  esp_log_level_set("esp_https_server", ESP_LOG_DEBUG);
+
   // Periodically print out timing and task debug info
   while (true) {
     auto out_buf = std::make_unique<std::array<char, 2048>>();
